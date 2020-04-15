@@ -10,6 +10,9 @@ From similar sources as previous links, but with useful data formats:
 https://datahub.io/core/covid-19
 https://pomber.github.io/covid19/timeseries.json
 
-## sxome hints:
+## COVID Projections Tracker
+http://www.covid-projections.com/
+
+## some hints for implementation:
 * Reading data directly from Matlab using "urlread"
 * Read JSON format in recent Matlab versions using "jsondecode"
