@@ -5,11 +5,16 @@ clc;
 
 AllCases = importdata('Z:\csse_covid_19_data\csse_covid_19_time_series\time_series_covid19_confirmed_global.csv');
 AllDeaths = importdata('Z:\csse_covid_19_data\csse_covid_19_time_series\time_series_covid19_deaths_global.csv');
-% CountryList = {'Canada', 'US', 'China', 'Iran', 'France', 'Germany', 'Italy', 'Spain', 'Netherlands', 'Belgium', 'United Kingdom'};
-CountryList = {'US', 'Spain', 'Italy', 'France', 'Germany', 'United Kingdom', 'Turkey', 'Iran', 'China', 'Russia', 'Brazil', 'Belgium', 'Canada', 'Netherlands', 'Switzerland', 'India', 'Peru', 'Portugal'};
+
+CountryList = {'US', 'Brazil', 'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Turkey', 'India', 'Iran', 'Peru', 'Canada', 'China'};
+ttl = 'Global COVID-19 mortality rate per official case reports, by 26 May 2020';
+
+% CountryList = {'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Belgium', 'Netherlands', 'Belarus', 'Sweden', 'Portugal', 'Switzerland'};
+% ttl = 'European COVID-19 mortality rate per official case reports, by 26 May 2020';
+
 style = {'-', '.', 's', '|', '.*'};
 NumDays = size(AllCases.data, 2) - 2;
-min_cases = 1000; % min number of cases
+min_cases = 100; % min number of cases
 period = 100; % days
 
 % load totaltests tests
@@ -105,6 +110,7 @@ xlabel(['days since ' num2str(min_cases) ' case reports']);
 ylabel('death to total cases ratio (%)');
 set(gca, 'fontsize', 14);
 set(gca, 'box', 'on');
+title(ttl);
 
 % for k = 1 : length(CountryList)
 %     indexes = min_cases_date(k) : min(min_cases_date(k) + period, size(total, 2));
