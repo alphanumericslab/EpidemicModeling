@@ -6,7 +6,8 @@
 The Coronavirus COVID-19 has taken the lives of several thousands worldwide and locked-out many countries and regions, with yet unpredictable global consequences.
 In this ongoing research we study the epidemic patterns of this virus from a mathematical modeling perspective.
 The objective of this work is to provide researchers a better understanding of spreading patterns of such diseases and to clarify the common misunderstandings in this regard.
-The latest version of a technical report on this research is available at: https://arxiv.org/abs/2003.11371.
-This Git repository is dedicated to sharing source codes for modeling and simulation of such epidemic diseases.
+The latest version of a technical report on this research is available at: https://arxiv.org/abs/2003.11371. This Git repository is dedicated to sharing source codes for modeling and simulation of such epidemic diseases.
+
+The repository also contains the models and Matlab codes developed by the Alphanumerics Team, during the [XPRIZE Pandemic Response Challenge](https://www.xprize.org/challenge/pandemicresponse) for predicting the future trends of the pandemic for different regions/countries using their previous trends and the non-pharmaceutical intervention (NPI) plans adopted in each region/country. Examples of such quantitative NPIs can be found in the [Oxford Covid-19 Government Response Tracker](https://github.com/OxCGRT/covid-policy-tracker). Python implementations of the models and algorithms developed by the Alphanumerics Team during the [XPRIZE Pandemic Response Challenge](https://www.xprize.org/challenge/pandemicresponse) are partially available in a [separate repository](https://github.com/alphanumericslab/covid-xprize). Please contact for access to these codes.
 
 #coronavirus #CoronavirusOutbreak #Epidemic #covid19outbreak
