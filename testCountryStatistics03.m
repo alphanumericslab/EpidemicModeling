@@ -2,20 +2,20 @@ clear;
 close all;
 clc;
 
-AllCasesFname = 'Z:\csse_covid_19_data\csse_covid_19_time_series\time_series_covid19_confirmed_global.csv';
-AllDeathsFname = 'Z:\csse_covid_19_data\csse_covid_19_time_series\time_series_covid19_deaths_global.csv';
-AllRecoveredFname = 'Z:\csse_covid_19_data\csse_covid_19_time_series\time_series_covid19_recovered_global.csv';
+AllCasesFname = './../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv';
+AllDeathsFname = './../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv';
+AllRecoveredFname = './../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv';
 
-% RegionList = {'US', 'Brazil', 'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Turkey', 'India', 'Iran', 'Peru', 'Canada', 'China'};
+RegionList = {'US', 'Brazil', 'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Turkey', 'India', 'Iran', 'Peru', 'Canada', 'China'};
 % RegionList = {'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Belgium', 'Netherlands', 'Belarus', 'Sweden', 'Portugal', 'Switzerland'};
-RegionList = {'Spain', 'United Kingdom', 'Italy', 'France', 'Germany'};
+% RegionList = {'Spain', 'United Kingdom', 'Italy', 'France', 'Germany'};
 % RegionList = {'France', 'Iran'};
 
 style = {'-', '.', 's', '|', '.*'};
 min_cases = 100; % min number of cases
-period = 200; % days
-avgdays = 7;
-R0period = 3;
+period = 300; % days
+avgdays = 3;
+R0period = 7;
 
 % load COBID-19 data (https://github.com/CSSEGISandData/COVID-19.git)
 [TotalCases, Infected, Recovered, Deceased, FirstCaseDateIndex, MinCaseDateIndex, NumDays] = ReadCOVID19Data(AllCasesFname, AllDeathsFname, AllRecoveredFname, RegionList, min_cases);
@@ -79,7 +79,7 @@ for k = 1 : length(RegionList)
     end
     text(length(indexes)-1, R0(k, indexes(end)), RegionList{k}, 'color', clr);
 end
-maxdays = 95;
+maxdays = 300;
 plot((0:maxdays-1), ones(1, maxdays), 'k--', 'linewidth', 2);
 grid
 title(['Reproduction number for ' num2str(R0period) ' day generations geometrically averaged over ' num2str(avgdays) ' successive days']);

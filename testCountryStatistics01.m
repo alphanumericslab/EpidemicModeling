@@ -3,8 +3,8 @@ close all;
 clc;
 
 
-AllCases = importdata('Z:\csse_covid_19_data\csse_covid_19_time_series\time_series_covid19_confirmed_global.csv');
-AllDeaths = importdata('Z:\csse_covid_19_data\csse_covid_19_time_series\time_series_covid19_deaths_global.csv');
+AllCases = importdata('./../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv');
+AllDeaths = importdata('./../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv');
 % CountryList = {'Canada', 'US', 'China', 'Iran', 'France', 'Germany', 'Italy', 'Spain', 'Netherlands', 'Belgium', 'United Kingdom'};
 CountryList = {'Korea', 'US', 'Spain', 'Italy', 'France', 'Germany', 'United Kingdom', 'China', 'Iran', 'Turkey', 'Belgium', 'Netherlands', 'Switzerland'};%,  'Canada', 'Brazil', 'Portugal'};
 style = {'-', '.', 's', '|', '.*'};
