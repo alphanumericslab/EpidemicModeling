@@ -1,3 +1,4 @@
+
 close all
 clear
 clc
@@ -30,8 +31,8 @@ filter_type = 'MOVINGAVERAGE-CAUSAL'; % 'MOVINGAVERAGE-NONCAUSAL' or 'MOVINGAVER
 DiffOrderOrFilterCoefs = 2; % Smoothness filter order
 gamma = 25.0; % Tikhonov roughness penalty
 
-% data_file = './../../covid-policy-tracker/data/OxCGRT_latest.csv'; % The data-file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
-data_file = './data/files/OxCGRT_latest_aug.csv'; % The data-file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
+% data_file = './../covid-policy-tracker/data/OxCGRT_latest.csv'; % The data-file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
+data_file = './../covid-xprize/AlphanumericsTeam/data/files/OxCGRT_latest_aug.csv'; % The data-file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
 included_IP = {'C1_School closing',... % see full descriptions at: https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/codebook.md
     'C1_Flag',...
     'C2_Workplace closing',...
@@ -77,7 +78,7 @@ GeoID = strcat(string(AllCountryCodes), string(AllRegionCodes));
 NumGeoLocations = length(CountryAndRegionList); % Number of country-region pairs
 
 % FEATURE EXTRACTION (Different methods for calculating the reproduction rate)
-for k = 219 : 219 %122 : 125%225 %1 : NumGeoLocations
+for k = 219 : 240 %122 : 125%225 %1 : NumGeoLocations
     k
     switch start_date_criterion
         case 'MIN_CASE_BASED'
@@ -179,15 +180,21 @@ for k = 219 : 219 %122 : 125%225 %1 : NumGeoLocations
             error('Unknown filter type');
     end
     
-    [~, Amp1, Lambda1, PointWiseFit1] = Rt_expfit1(NewCasesSmoothed, Rt_wlen, 1);
+    [~, Amp1, Lambda1, PointWiseFit1] = Rt_ExpFitLogLinReg(NewCasesSmoothed, Rt_wlen, 1);
     
-    [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_expfit2(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
+    [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_ExpFitGenRatios(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
     Lambda2Baseline = BaseLine1(Lambda2, lambda_baseline_wlen, 'md');
     Lambda2Baseline = BaseLine1(Lambda2Baseline, lambda_baseline_wlen, 'mn');
     
-    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_expfit3(NewCasesSmoothed, Rt_wlen, 1);
+    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_ExpFitNonlinLS(NewCasesSmoothed, Rt_wlen, 1);
     
-    NewCasesSkipped = NewCasesFilled;
+    
+    
+    NewCasesSkipped = NewCasesSmoothed; % just for test
+    
+    
+    
+    % % %     NewCasesSkipped = NewCasesFilled;
     % NewCasesSkipped(end - 10 : end) = nan; % for forecasting
     
     s_init = [NewCasesSkipped(1) ; Lambda2(1)];
@@ -204,13 +211,18 @@ for k = 219 : 219 %122 : 125%225 %1 : NumGeoLocations
     sigma = 10.1;
     params = [time_scale, lambda_forgetting_factor, sigma];
     order = 1;
-    [S_MINUS, S_PLUS, P_MINUS, P_PLUS, K_GAIN, S_SMOOTH, P_SMOOTH, innovations, rho] = Rt_EKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
+    [S_MINUS, S_PLUS, P_MINUS, P_PLUS, K_GAIN, S_SMOOTH, P_SMOOTH, innovations, rho] = Rt_ExpFitEKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
     order = 2;
-    [S_MINUS2, S_PLUS2, P_MINUS2, P_PLUS2, K_GAIN2, S_SMOOTH2, P_SMOOTH2, innovations2, rho2] = Rt_EKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
+    [S_MINUS2, S_PLUS2, P_MINUS2, P_PLUS2, K_GAIN2, S_SMOOTH2, P_SMOOTH2, innovations2, rho2] = Rt_ExpFitEKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
     
     figure
     plot(rho);
     grid
+    title(CountryAndRegionList(k), 'interpreter', 'none');
+    set(gca, 'fontsize', 18);
+    set(gca, 'box', 'on');
+    ylabel('Rho');
+    xlabel('Days since 100th case');
     
     lgn = {};
     ksigma = 3.0;
@@ -218,15 +230,18 @@ for k = 219 : 219 %122 : 125%225 %1 : NumGeoLocations
     figure
     hold on
     %     errorbar(S_MINUS(1, :), ksigma*sqrt(squeeze(P_MINUS(1, 1, :)))); lgn = cat(2, lgn, {'S_MINUS'});
-    %     errorbar(S_PLUS(1, :), ksigma*sqrt(squeeze(P_PLUS(1, 1, :)))); lgn = cat(2, lgn, {'EKF'});
-    %     errorbar(S_PLUS2(1, :), ksigma*sqrt(squeeze(P_PLUS2(1, 1, :)))); lgn = cat(2, lgn, {'EKF2'});
+    errorbar(S_PLUS(1, :), ksigma*sqrt(squeeze(P_PLUS(1, 1, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKF Envelopes'});
+    %     errorbar(S_PLUS2(1, :), ksigma*sqrt(squeeze(P_PLUS2(1, 1, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKF2 Envelopes'});
     %     plot_areaerrorbar(S_PLUS(1, :), ksigma*sqrt(squeeze(P_PLUS(1, 1, :))), options); lgn = cat(2, lgn, {'EKF'});
     errorbar(S_SMOOTH(1, :), ksigma*sqrt(squeeze(P_SMOOTH(1, 1, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS Envelopes'});
-    %     errorbar(S_SMOOTH2(1, :), ksigma*sqrt(squeeze(P_SMOOTH2(1, 1, :)))); lgn = cat(2, lgn, {'EKS2'});
+    %     errorbar(S_SMOOTH2(1, :), ksigma*sqrt(squeeze(P_SMOOTH2(1, 1, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS2 Envelopes'});
     %     plot_areaerrorbar(S_SMOOTH(1, :), ksigma*sqrt(squeeze(P_SMOOTH(1, 1, :))), options); lgn = cat(2, lgn, {'EKS'});
     plot(NewCases, 'linewidth', 1); lgn = cat(2, lgn, {'New Cases'});
     plot(NewCasesSmoothed, 'linewidth', 3); lgn = cat(2, lgn, {'7-Day MA'});
+    plot(S_PLUS(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF'});
+    %     plot(S_PLUS2(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF2'});
     plot(S_SMOOTH(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS'});
+    %     plot(S_SMOOTH2(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS2'});
     legend(lgn);%, 'interpreter', 'none');
     title(CountryAndRegionList(k), 'interpreter', 'none');
     xlabel('Days since 100th case');
@@ -240,16 +255,18 @@ for k = 219 : 219 %122 : 125%225 %1 : NumGeoLocations
     ksigma = 1.0;
     figure
     hold on
-    errorbar(S_SMOOTH(2, :), ksigma*sqrt(squeeze(P_SMOOTH(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS Envelopes'});
     %     errorbar(S_MINUS2(2, :), ksigma*sqrt(squeeze(P_MINUS2(2, 2, :)))); lgn = cat(2, lgn, {'S_MINUS2'});
-    %     errorbar(S_PLUS(2, :), ksigma*sqrt(squeeze(P_PLUS(2, 2, :)))); lgn = cat(2, lgn, {'S_PLUS'});
-    %     errorbar(S_PLUS2(2, :), ksigma*sqrt(squeeze(P_PLUS2(2, 2, :)))); lgn = cat(2, lgn, {'S_PLUS2'});
-    % errorbar(S_SMOOTH(2, :), ksigma*sqrt(squeeze(P_SMOOTH(2, 2, :)))); lgn = cat(2, lgn, {'S_SMOOTH'});
-    % errorbar(S_SMOOTH2(2, :), ksigma*sqrt(squeeze(P_SMOOTH2(2, 2, :)))); lgn = cat(2, lgn, {'S_SMOOTH2'});
+    errorbar(S_PLUS(2, :), ksigma*sqrt(squeeze(P_PLUS(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKF Envelopes'});
+    %     errorbar(S_PLUS2(2, :), ksigma*sqrt(squeeze(P_PLUS2(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKF2 Envelopes'});
+    errorbar(S_SMOOTH(2, :), ksigma*sqrt(squeeze(P_SMOOTH(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS Envelopes'});
+    %     errorbar(S_SMOOTH2(2, :), ksigma*sqrt(squeeze(P_SMOOTH2(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS2 Envelopes'});
     plot(Lambda1, 'linewidth', 3); lgn = cat(2, lgn, {'Linear Fit'});
     plot(Lambda2, 'linewidth', 3); lgn = cat(2, lgn, {'New case ratios geometric mean'});
     plot(Lambda3, 'linewidth', 3); lgn = cat(2, lgn, {'Least Squares'});
+    plot(S_PLUS(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF'});
+    %     plot(S_PLUS2(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF2'});
     plot(S_SMOOTH(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS'});
+    %     plot(S_SMOOTH2(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS2'});
     %     plot(Lambda2Smoothed, 'linewidth', 3); lgn = cat(2, lgn, {'Lambda2Smoothed'});
     legend(lgn);%, 'interpreter', 'none');
     title(CountryAndRegionList(k), 'interpreter', 'none');

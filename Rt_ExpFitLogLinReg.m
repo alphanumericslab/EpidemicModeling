@@ -1,4 +1,4 @@
-function [Rt, A, Lambda, ExpFit] = Rt_expfit1(NewCases, wlen, time_unit)
+function [Rt, A, Lambda, ExpFit] = Rt_ExpFitLogLinReg(NewCases, wlen, time_unit)
 % Estimates the parameters of an exponential fit. The function performs a
 % linear regression over the log of the past wlen number of new cases
 % acquired over constant time intervals time_unit

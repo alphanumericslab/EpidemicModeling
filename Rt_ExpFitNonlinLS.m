@@ -1,4 +1,4 @@
-function [Rt, A, Lambda, ExpFit] = Rt_expfit3(NewCases, wlen, time_unit)
+function [Rt, A, Lambda, ExpFit] = Rt_ExpFitNonlinLS(NewCases, wlen, time_unit)
 % Estimates the parameters of an exponential fit using nonlinear least
 % squares over the past wlen number of new cases acquired over constant
 % time intervals time_unit

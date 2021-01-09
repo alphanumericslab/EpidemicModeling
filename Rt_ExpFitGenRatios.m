@@ -1,5 +1,6 @@
-function [Rt, Lambda, RtSmoothed, LambdaSmoothed] = Rt_expfit2(NewCases, wlen, generation_period, time_unit)
-% Estimates the parameters of an exponential fit.
+function [Rt, Lambda, RtSmoothed, LambdaSmoothed] = Rt_ExpFitGenRatios(NewCases, wlen, generation_period, time_unit)
+% Estimates the parameters of an exponential fit using a geometric mean
+% between ratios of epidemic generation populations.
 %
 % Reza Sameni
 % Dec 2020

@@ -103,11 +103,11 @@ for k = 219 : 220% 1: NumGeoLocations
             error('Unknown filter type');
     end
     
-    [~, Amp1, Lambda1, PointWiseFit1] = Rt_expfit1(NewCasesSmoothed, Rt_wlen, 1);
+    [~, Amp1, Lambda1, PointWiseFit1] = Rt_ExpFitLogLinReg(NewCasesSmoothed, Rt_wlen, 1);
     
-    [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_expfit2(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
+    [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_ExpFitGenRatios(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
     
-    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_expfit3(NewCasesSmoothed, Rt_wlen, 1);
+    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_ExpFitNonlinLS(NewCasesSmoothed, Rt_wlen, 1);
     
     % Generate feature vectors based on intervention plans
     numTimeStepsTrain = size(InterventionPlans, 1) - predict_ahead_num_days;%floor(0.65*numel(y_data));

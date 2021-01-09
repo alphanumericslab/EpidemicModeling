@@ -1,4 +1,4 @@
-function [S_MINUS, S_PLUS, P_MINUS, P_PLUS, K_GAIN, S_SMOOTH, P_SMOOTH, innovations, rho] = Rt_EKF(x, s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order)
+function [S_MINUS, S_PLUS, P_MINUS, P_PLUS, K_GAIN, S_SMOOTH, P_SMOOTH, innovations, rho] = Rt_ExpFitEKF(x, s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order)
 % Estimates the parameters of an exponential fit using an Extended Kalman
 % Filter (EKF) and Extended Kalman Smoother (EKS) over the number of new cases
 %
@@ -38,21 +38,23 @@ for k = 1 : T
     
     if(order == 1)
         gs = zeros(n, 1);
-        Gp = zeros(n);
+        Gsp = zeros(n);
+        gv = zeros(n, 1);
+        Gvp = zeros(n);
     elseif(order == 2)
-        [gs, Gp] = ObsHessianTerms(sk_minus, Pk_minus, w_bar, params);
+        [gs, Gsp, gv, Gvp] = ObsHessianTerms(sk_minus, Pk_minus, v_bar, R, params);
     else
         error('Undefined order');
     end
     
     % Calculate s(k|k) and P(k|k)
-    Ck_minus = ObsJacobian(sk_minus, v_bar, params);
-    xk_minus = NlinObsUpdate(sk_minus, v_bar, params) + gs;
+    [Ck_minus, Dk_minus] = ObsJacobian(sk_minus, v_bar, params);
+    xk_minus = NlinObsUpdate(sk_minus, v_bar, params) + gs + gv;
     
     % time update if observation is valid
     if(~isnan(x(:, k)))
         innovations(:, k) = x(:, k) - xk_minus;
-        Kgain = Pk_minus * Ck_minus' / (Ck_minus * Pk_minus * Ck_minus' + gamma * R + Gp); % Kalman gain
+        Kgain = Pk_minus * Ck_minus' / (Ck_minus * Pk_minus * Ck_minus' + gamma * (Dk_minus * R * Dk_minus') + Gsp + Gvp); % Kalman gain
         Pk_plus = (eye(m) - Kgain * Ck_minus) * Pk_minus / gamma;
         sk_plus = sk_minus + Kgain * innovations(:, k);                 % As posteriori state estimate
     else
@@ -64,18 +66,20 @@ for k = 1 : T
     
     if(order == 1)
         fs = zeros(m, 1);
-        Fp = zeros(m);
+        Fsp = zeros(m);
+        fw = zeros(m, 1);
+        Fwp = zeros(m);
     elseif(order == 2)
-        [fs, Fp] = StateHessianTerms(sk_plus, Pk_plus, w_bar, params);
+        [fs, Fsp, fw, Fwp] = StateHessianTerms(sk_plus, Pk_plus, w_bar, Q, params);
     else
         error('Undefined order');
     end
     
     % Calculate s(k+1|k) and P(k+1|k) for k+1
-    sk_minus = NlinStateUpdate(sk_plus, w_bar, params) + fs; % State update
-    Ak_plus = StateJacobian(sk_plus, w_bar, params);
-    Pk_minus = (Ak_plus * Pk_plus * Ak_plus') + Q + Fp; % Cov. matrix update
-    
+    sk_minus = NlinStateUpdate(sk_plus, w_bar, params) + fs + fw; % State update
+    [Ak_plus, Bk_plus] = StateJacobians(sk_plus, w_bar, params);
+    Pk_minus = (Ak_plus * Pk_plus * Ak_plus') + (Bk_plus * Q * Bk_plus') + Fsp + Fwp; % Cov. matrix update
+        
     % Store results of s_plus
     S_PLUS(:, k) = sk_plus;
     P_PLUS(:, :, k) = Pk_plus;
@@ -102,7 +106,7 @@ P_SMOOTH = zeros(size(P_PLUS));
 P_SMOOTH(:, :, T) = P_PLUS(:, :, T);
 for k = T - 1 : -1 : 1
     sk_plus = S_PLUS(:, k);
-    Ak_plus = StateJacobian(sk_plus, w_bar, params);
+    Ak_plus = StateJacobians(sk_plus, w_bar, params);
     J = (P_PLUS(:, :, k) * Ak_plus') / (P_MINUS(:, :, k + 1));
     S_SMOOTH(:, k) = S_PLUS(:, k) + J * (S_SMOOTH(:, k + 1) - S_MINUS(:, k + 1));
     P_SMOOTH(:, :, k) = P_PLUS(:, :, k) - J * (P_MINUS(:, :, k+1) - P_SMOOTH(:, :, k+1)) * J';
@@ -128,7 +132,7 @@ x_k = s_k(1) + v_bar;
 end
 
 % State equation Jacobian
-function A = StateJacobian(s_k, w_bar, params)
+function [A, B] = StateJacobians(s_k, w_bar, params)
 time_scale = params(1);
 alpha = params(2);
 sigma = params(3);
@@ -136,53 +140,87 @@ A = zeros(2);
 A(1, 1) = exp(time_scale * s_k(2));
 A(1, 2) = time_scale * s_k(1) * exp(time_scale * s_k(2));
 A(2, 1) = 0;
-A(2, 2) = alpha * (1 - tanh((alpha * s_k(2) + w_bar(2))/sigma)^2);
+tnh = tanh((alpha * s_k(2) + w_bar(2))/sigma);
+A(2, 2) = alpha * (1 - tnh^2);
+
+B = zeros(2);
+B(1, 1) = 1;
+B(2, 2) = (1 - tnh^2);
 end
 
 % Observation equation Jacobian
-function C = ObsJacobian(s_k, v_bar, params)
+function [C, D] = ObsJacobian(s_k, v_bar, params)
 C = [1, 0];
+D = 1;
 end
 
 % State equation Hessian terms
-function [fs, Fp] = StateHessianTerms(s_k, Pk, w_bar, params)
+function [fs, Cs, fw, Cw] = StateHessianTerms(s_k, Pk, w_bar, Qk, params)
 time_scale = params(1);
 alpha = params(2);
 sigma = params(3);
-F1 = zeros(2);
-F1(1, 2) = time_scale * exp(time_scale * s_k(2));
-F1(2, 1) = F1(1, 2);
-F1(2, 2) = time_scale ^ 2 * s_k(1) * exp(time_scale * s_k(2));
+Fs1 = zeros(2);
+Fs1(1, 2) = time_scale * exp(time_scale * s_k(2));
+Fs1(2, 1) = Fs1(1, 2);
+Fs1(2, 2) = time_scale ^ 2 * s_k(1) * exp(time_scale * s_k(2));
 
-F2 = zeros(2);
+Fs2 = zeros(2);
 tnh = tanh((alpha * s_k(2) + w_bar(2))/sigma);
-F2(2, 2) = -2 * alpha ^ 2 / sigma * tnh * (1 - tnh^2);
-F = {F1, F2};
+Fs2(2, 2) = -2 * alpha ^ 2 / sigma * tnh * (1 - tnh^2);
+Fs = {Fs1, Fs2};
+
+Fw1 = zeros(2);
+Fw2 = zeros(2);
+Fw2(2, 2) = -2 / sigma * tnh * (1 - tnh^2);
+Fw = {Fw1, Fw2};
 
 m = 2;
 fs = zeros(m, 1);
-Fp = zeros(m);
+Cs = zeros(m);
 for ii = 1 : m
-    fs(ii) = trace(Pk * F{ii}) / 2;
+    fs(ii) = trace(Pk * Fs{ii}) / 2;
     for jj = 1 : m
-        Fp(ii, jj) = trace(Pk * F{ii} * Pk * F{jj}) / 2;
+        Cs(ii, jj) = trace(Pk * Fs{ii} * Pk * Fs{jj}) / 2;
+    end
+end
+
+m = 2;
+fw = zeros(m, 1);
+Cw = zeros(m);
+for ii = 1 : m
+    fw(ii) = trace(Qk * Fw{ii}) / 2;
+    for jj = 1 : m
+        Cw(ii, jj) = trace(Qk * Fw{ii} * Qk * Fw{jj}) / 2;
     end
 end
 
 end
 
 % Observation equation Hessian terms
-function [gs, Gp] = ObsHessianTerms(s_k, Pk, w_bar, params)
+function [gs, Gsp, gv, Gvp] = ObsHessianTerms(s_k, Pk, v_bar, Rk, params)
 G1 = zeros(1);
-G = {G1};
+Gs = {G1};
+
+G1 = zeros(1);
+Gv = {G1};
 
 n = 1;
 gs = zeros(n, 1);
-Gp = zeros(n);
+Gsp = zeros(n);
 for ii = 1 : n
-    gs(ii) = trace(Pk * G{ii}) / 2;
+    gs(ii) = trace(Pk * Gs{ii}) / 2;
     for jj = 1 : n
-        Gp(ii, jj) = trace(Pk * G{ii} * Pk * G{jj}) / 2;
+        Gsp(ii, jj) = trace(Pk * Gs{ii} * Pk * Gs{jj}) / 2;
+    end
+end
+
+n = 1;
+gv = zeros(n, 1);
+Gvp = zeros(n);
+for ii = 1 : n
+    gv(ii) = trace(Rk * Gv{ii}) / 2;
+    for jj = 1 : n
+        Gvp(ii, jj) = trace(Rk * Gv{ii} * Rk * Gv{jj}) / 2;
     end
 end
 

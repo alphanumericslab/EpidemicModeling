@@ -110,7 +110,7 @@ for k = 205 : 206% 1: NumGeoLocations
     %     LtMethod1 = cat(1, LtMethod1, Lambda1);
     %     PointWiseFit = exp(Amp + Lambda1);
     wlen = 14;
-    [~, Amp1, Lambda1, PointWiseFit1] = Rt_expfit1(NewCasesSmoothed, wlen, 1);
+    [~, Amp1, Lambda1, PointWiseFit1] = Rt_ExpFitLogLinReg(NewCasesSmoothed, wlen, 1);
     LtMethod1 = cat(1, LtMethod1, {Lambda1});
     
     % % %     lag = 1;
@@ -122,9 +122,9 @@ for k = 205 : 206% 1: NumGeoLocations
     % % %     R0period = 7;
     % % %     R = filter(ones(1, avgdays), avgdays, Rate);
     generation_period = 3;
-    [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_expfit2(NewCasesSmoothed, wlen, generation_period, 1);
+    [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_ExpFitGenRatios(NewCasesSmoothed, wlen, generation_period, 1);
     
-    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_expfit3(NewCasesSmoothed, wlen, 1);
+    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_ExpFitNonlinLS(NewCasesSmoothed, wlen, 1);
     
     LtMethod2 = cat(1, LtMethod2, {Lambda2});
     LtMethod3 = cat(1, LtMethod3, {Lambda2Smoothed});
