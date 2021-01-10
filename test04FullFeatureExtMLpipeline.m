@@ -25,7 +25,7 @@ predict_ahead_num_days = 21; % number of days to predict ahead
 Rt_wlen = 7; % Reproduction rate estimation window
 Rt_generation_period = 3; % The generation period used for calculating the reproduction number
 lambda_threshold = 0.06; % The threshold for the maximum absolute value of the reproduction rates exponent lambda
-filter_type = 'MOVINGAVERAGE-CAUSAL'; % 'MOVINGAVERAGE-NONCAUSAL' or 'MOVINGAVERAGE-CAUSAL' ' or 'MOVINGMEDIAN' or 'TIKHONOV'; % The last two call functions from the OSET package (oset.ir). Note: 'MOVINGAVERAGE-CAUSAL' is the contest standard and only evaluation algorithm
+filter_type = 'MOVINGAVERAGE-CAUSAL'; % 'BYPASS', 'MOVINGAVERAGE-NONCAUSAL' or 'MOVINGAVERAGE-CAUSAL' ' or 'MOVINGMEDIAN' or 'TIKHONOV'; % The last two call functions from the OSET package (oset.ir). Note: 'MOVINGAVERAGE-CAUSAL' is the contest standard and only evaluation algorithm
 % Tikhonov regularization params (if selected by filter_type):
 % DiffOrderOrFilterCoefs = [1 -2 1]; % Smoothness filter coefs
 DiffOrderOrFilterCoefs = 2; % Smoothness filter order
@@ -78,7 +78,7 @@ GeoID = strcat(string(AllCountryCodes), string(AllRegionCodes));
 NumGeoLocations = length(CountryAndRegionList); % Number of country-region pairs
 
 % FEATURE EXTRACTION (Different methods for calculating the reproduction rate)
-for k = 219 : 240 %122 : 125%225 %1 : NumGeoLocations
+for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     k
     switch start_date_criterion
         case 'MIN_CASE_BASED'
@@ -167,6 +167,8 @@ for k = 219 : 240 %122 : 125%225 %1 : NumGeoLocations
     
     % Smooth the newcases time series
     switch filter_type
+        case 'BYPASS' % Bypass (no smoothing)
+            NewCasesSmoothed = NewCasesFilled;
         case 'TIKHONOV' % Tikhonov regularization
             NewCasesSmoothed = TikhonovRegularization(NewCasesFilled', DiffOrderOrFilterCoefs, gamma)';
         case 'MOVINGAVERAGE-CAUSAL'
@@ -180,23 +182,24 @@ for k = 219 : 240 %122 : 125%225 %1 : NumGeoLocations
             error('Unknown filter type');
     end
     
-    [~, Amp1, Lambda1, PointWiseFit1] = Rt_ExpFitLogLinReg(NewCasesSmoothed, Rt_wlen, 1);
+    % Method A
+    causal = 1;
+    [~, Amp1, Lambda1, PointWiseFit1] = Rt_ExpFitLogLinReg(NewCasesSmoothed, Rt_wlen, 1, causal);
     
+    % Method B
     [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_ExpFitGenRatios(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
     Lambda2Baseline = BaseLine1(Lambda2, lambda_baseline_wlen, 'md');
     Lambda2Baseline = BaseLine1(Lambda2Baseline, lambda_baseline_wlen, 'mn');
     
-    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_ExpFitNonlinLS(NewCasesSmoothed, Rt_wlen, 1);
+    % Method C    
+    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_ExpFitNonlinLS(NewCasesSmoothed, Rt_wlen, 1, causal);
     
-    
-    
-    NewCasesSkipped = NewCasesSmoothed; % just for test
-    
-    
-    
+    % Method D
+    forecast_days = 21; % number of days to forecast
+    NewCasesSkipped = NewCasesSmoothed; %
     % % %     NewCasesSkipped = NewCasesFilled;
-    % NewCasesSkipped(end - 10 : end) = nan; % for forecasting
-    
+    NewCasesSkipped(end - forecast_days + 1 : end) = nan; % for forecasting
+
     s_init = [NewCasesSkipped(1) ; Lambda2(1)];
     w_bar = [0 ; 0];
     v_bar = 0;
@@ -241,6 +244,7 @@ for k = 219 : 240 %122 : 125%225 %1 : NumGeoLocations
     plot(S_PLUS(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF'});
     %     plot(S_PLUS2(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF2'});
     plot(S_SMOOTH(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS'});
+    plot(PointWiseFit3, 'linewidth', 3); lgn = cat(2, lgn, {'Nonlinear Least Squares'});
     %     plot(S_SMOOTH2(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS2'});
     legend(lgn);%, 'interpreter', 'none');
     title(CountryAndRegionList(k), 'interpreter', 'none');
@@ -260,9 +264,9 @@ for k = 219 : 240 %122 : 125%225 %1 : NumGeoLocations
     %     errorbar(S_PLUS2(2, :), ksigma*sqrt(squeeze(P_PLUS2(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKF2 Envelopes'});
     errorbar(S_SMOOTH(2, :), ksigma*sqrt(squeeze(P_SMOOTH(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS Envelopes'});
     %     errorbar(S_SMOOTH2(2, :), ksigma*sqrt(squeeze(P_SMOOTH2(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS2 Envelopes'});
-    plot(Lambda1, 'linewidth', 3); lgn = cat(2, lgn, {'Linear Fit'});
-    plot(Lambda2, 'linewidth', 3); lgn = cat(2, lgn, {'New case ratios geometric mean'});
-    plot(Lambda3, 'linewidth', 3); lgn = cat(2, lgn, {'Least Squares'});
+    plot(Lambda1, 'linewidth', 3); lgn = cat(2, lgn, {'Log Linear Regression'});
+    plot(Lambda2, 'linewidth', 3); lgn = cat(2, lgn, {'Generation-wise Geometric mean'});
+    plot(Lambda3, 'linewidth', 3); lgn = cat(2, lgn, {'Nonlinear Least Squares'});
     plot(S_PLUS(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF'});
     %     plot(S_PLUS2(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF2'});
     plot(S_SMOOTH(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS'});
