@@ -182,40 +182,40 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
             error('Unknown filter type');
     end
     
-    % Method A
-    causal = 1;
+    % Method A: Linear regression over log of new cases
+    causal = 1; % 0 for non-causal estimates; 1 for causal estimates
     [~, Amp1, Lambda1, PointWiseFit1] = Rt_ExpFitLogLinReg(NewCasesSmoothed, Rt_wlen, 1, causal);
     
-    % Method B
+    % Method B: Geometric mean of new cases ratios over different generations
     [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_ExpFitGenRatios(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
     Lambda2Baseline = BaseLine1(Lambda2, lambda_baseline_wlen, 'md');
     Lambda2Baseline = BaseLine1(Lambda2Baseline, lambda_baseline_wlen, 'mn');
     
-    % Method C    
+    % Method C: Nonlinear least squares fit of an exponential curve over the new cases
     [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_ExpFitNonlinLS(NewCasesSmoothed, Rt_wlen, 1, causal);
     
-    % Method D
+    % Method D: Extended Kalman filter and fixed interval Kalna smoother
     forecast_days = 21; % number of days to forecast
     NewCasesSkipped = NewCasesSmoothed; %
     % % %     NewCasesSkipped = NewCasesFilled;
     NewCasesSkipped(end - forecast_days + 1 : end) = nan; % for forecasting
 
-    s_init = [NewCasesSkipped(1) ; Lambda2(1)];
-    w_bar = [0 ; 0];
-    v_bar = 0;
-    Q_w = diag([(250)^2, (1e-2)^2]);
-    Ps_init = 100 * Q_w;
-    R_v = (10)^2;
-    beta = 0.9;
-    gamma = 0.995;
-    inv_monitor_len = 20;
-    time_scale = 1;
-    lambda_forgetting_factor = 0.9;
-    sigma = 10.1;
+    s_init = [NewCasesSkipped(1) ; Lambda2(1)]; % initial state vector
+    w_bar = [0 ; 0]; % mean value of process noises
+    v_bar = 0; % mean value of observation noise
+    Q_w = diag([(250)^2, (1e-2)^2]); % Process noise covariance matrix
+    Ps_init = 100 * Q_w; % Covariance matrix of initial states
+    R_v = (10)^2; % Observation noise variance
+    beta = 0.9; % Observation noise update factor (set to 1 for no update)
+    gamma = 0.995; % Kalman gain stability factor (set very close to 1, or equal to 1 to disable the feature)
+    inv_monitor_len = 20; % Window length for innovations process whiteness monitoring
+    time_scale = 1; % temporal time scale
+    lambda_forgetting_factor = 0.9; % first-order autoregressive model forgetting factor
+    sigma = 1.0; % absolute infection rates are bounded by this value (by soft tanh saturation)
     params = [time_scale, lambda_forgetting_factor, sigma];
-    order = 1;
+    order = 1; % 1 for standard EKF; 2 for second-order EKF
     [S_MINUS, S_PLUS, P_MINUS, P_PLUS, K_GAIN, S_SMOOTH, P_SMOOTH, innovations, rho] = Rt_ExpFitEKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
-    order = 2;
+    order = 2; % 1 for standard EKF; 2 for second-order EKF
     [S_MINUS2, S_PLUS2, P_MINUS2, P_PLUS2, K_GAIN2, S_SMOOTH2, P_SMOOTH2, innovations2, rho2] = Rt_ExpFitEKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
     
     figure
@@ -228,7 +228,7 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     xlabel('Days since 100th case');
     
     lgn = {};
-    ksigma = 3.0;
+    ksigma = 3.0; % k-sigma envelope plots
     %     options.handle = figure;
     figure
     hold on
