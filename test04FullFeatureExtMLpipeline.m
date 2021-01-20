@@ -21,10 +21,10 @@ end_date = 20201225; % end date
 lambda_baseline_wlen = 7; % window length used for lambda baseline calculation
 ar_order = 24; % Autoregressive model
 ar_learninghistory = 120; % Autoregressive model estimation history look back
-predict_ahead_num_days = 21; % number of days to predict ahead
+predict_ahead_num_days = 0;%21; % number of days to predict ahead
 Rt_wlen = 7; % Reproduction rate estimation window
 Rt_generation_period = 3; % The generation period used for calculating the reproduction number
-lambda_threshold = 0.06; % The threshold for the maximum absolute value of the reproduction rates exponent lambda
+lambda_threshold = 0.1; % The threshold for the maximum absolute value of the reproduction rates exponent lambda
 filter_type = 'MOVINGAVERAGE-CAUSAL'; % 'BYPASS', 'MOVINGAVERAGE-NONCAUSAL' or 'MOVINGAVERAGE-CAUSAL' ' or 'MOVINGMEDIAN' or 'TIKHONOV'; % The last two call functions from the OSET package (oset.ir). Note: 'MOVINGAVERAGE-CAUSAL' is the contest standard and only evaluation algorithm
 % Tikhonov regularization params (if selected by filter_type):
 % DiffOrderOrFilterCoefs = [1 -2 1]; % Smoothness filter coefs
@@ -78,7 +78,7 @@ GeoID = strcat(string(AllCountryCodes), string(AllRegionCodes));
 NumGeoLocations = length(CountryAndRegionList); % Number of country-region pairs
 
 % FEATURE EXTRACTION (Different methods for calculating the reproduction rate)
-for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
+for k = 219 : 219%240 %122 : 125%225 %1 : NumGeoLocations
     k
     switch start_date_criterion
         case 'MIN_CASE_BASED'
@@ -184,39 +184,47 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     
     % Method A: Linear regression over log of new cases
     causal = 1; % 0 for non-causal estimates; 1 for causal estimates
-    [~, Amp1, Lambda1, PointWiseFit1] = Rt_ExpFitLogLinReg(NewCasesSmoothed, Rt_wlen, 1, causal);
+    [~, Amp1, Lambda_LogLinReg, NewCasesFit_LogLinReg] = Rt_ExpFitLogLinReg(NewCasesSmoothed, Rt_wlen, 1, causal);
     
     % Method B: Geometric mean of new cases ratios over different generations
-    [~, Lambda2, RtSmoothed, Lambda2Smoothed] = Rt_ExpFitGenRatios(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
-    Lambda2Baseline = BaseLine1(Lambda2, lambda_baseline_wlen, 'md');
-    Lambda2Baseline = BaseLine1(Lambda2Baseline, lambda_baseline_wlen, 'mn');
+    [~, Lambda_GeoGenRatios, RtSmoothed, Lambda_GeoGenRatiosSmoothed] = Rt_ExpFitGenRatios(NewCasesSmoothed, Rt_wlen, Rt_generation_period, 1);
+    Lambda_GeoGenRatiosBaseline = BaseLine1(Lambda_GeoGenRatios, lambda_baseline_wlen, 'md');
+    Lambda_GeoGenRatiosBaseline = BaseLine1(Lambda_GeoGenRatiosBaseline, lambda_baseline_wlen, 'mn');
     
     % Method C: Nonlinear least squares fit of an exponential curve over the new cases
-    [Rt3, Amp3, Lambda3, PointWiseFit3] = Rt_ExpFitNonlinLS(NewCasesSmoothed, Rt_wlen, 1, causal);
+    [Rt3, Amp3, Lambda_NonLinLS, NewCasesFit_NonLinLS] = Rt_ExpFitNonlinLS(NewCasesSmoothed, Rt_wlen, 1, causal);
     
     % Method D: Extended Kalman filter and fixed interval Kalna smoother
-    forecast_days = 21; % number of days to forecast
+    forecast_days = predict_ahead_num_days; % number of days to forecast
     NewCasesSkipped = NewCasesSmoothed; %
     % % %     NewCasesSkipped = NewCasesFilled;
     NewCasesSkipped(end - forecast_days + 1 : end) = nan; % for forecasting
-
-    s_init = [NewCasesSkipped(1) ; Lambda2(1)]; % initial state vector
+    
+    s_init = [NewCasesSkipped(1) ; Lambda_GeoGenRatios(1)]; % initial state vector
     w_bar = [0 ; 0]; % mean value of process noises
     v_bar = 0; % mean value of observation noise
-    Q_w = diag([(250)^2, (1e-2)^2]); % Process noise covariance matrix
+    Q_w = diag([(250)^2, (3.0e-3)^2]); % Process noise covariance matrix
     Ps_init = 100 * Q_w; % Covariance matrix of initial states
     R_v = (10)^2; % Observation noise variance
     beta = 0.9; % Observation noise update factor (set to 1 for no update)
     gamma = 0.995; % Kalman gain stability factor (set very close to 1, or equal to 1 to disable the feature)
-    inv_monitor_len = 20; % Window length for innovations process whiteness monitoring
+    inv_monitor_len = 21; % Window length for innovations process whiteness monitoring
     time_scale = 1; % temporal time scale
     lambda_forgetting_factor = 0.9; % first-order autoregressive model forgetting factor
-    sigma = 1.0; % absolute infection rates are bounded by this value (by soft tanh saturation)
+    sigma = lambda_threshold; % absolute infection rates are bounded by this value (by soft tanh saturation)
     params = [time_scale, lambda_forgetting_factor, sigma];
     order = 1; % 1 for standard EKF; 2 for second-order EKF
     [S_MINUS, S_PLUS, P_MINUS, P_PLUS, K_GAIN, S_SMOOTH, P_SMOOTH, innovations, rho] = Rt_ExpFitEKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
     order = 2; % 1 for standard EKF; 2 for second-order EKF
     [S_MINUS2, S_PLUS2, P_MINUS2, P_PLUS2, K_GAIN2, S_SMOOTH2, P_SMOOTH2, innovations2, rho2] = Rt_ExpFitEKF(NewCasesSkipped(:)', s_init, params, w_bar, v_bar, Ps_init, Q_w, R_v, beta, gamma, inv_monitor_len, order);
+    
+    % Find inclining/declining time instants
+    %     rate_incline_decline_index = Lambda_GeoGenRatios;
+    %     rate_incline_decline_index = Lambda_NonLinLS;
+    rate_incline_decline_index = S_SMOOTH(2, :);
+    
+    rates_inclining = find(rate_incline_decline_index >= 0);
+    rates_declining = find(rate_incline_decline_index < 0);
     
     figure
     plot(rho);
@@ -244,7 +252,7 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     plot(S_PLUS(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF'});
     %     plot(S_PLUS2(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF2'});
     plot(S_SMOOTH(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS'});
-    plot(PointWiseFit3, 'linewidth', 3); lgn = cat(2, lgn, {'Nonlinear Least Squares'});
+    plot(NewCasesFit_NonLinLS, 'linewidth', 3); lgn = cat(2, lgn, {'Nonlinear Least Squares'});
     %     plot(S_SMOOTH2(1, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS2'});
     legend(lgn);%, 'interpreter', 'none');
     title(CountryAndRegionList(k), 'interpreter', 'none');
@@ -264,14 +272,14 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     %     errorbar(S_PLUS2(2, :), ksigma*sqrt(squeeze(P_PLUS2(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKF2 Envelopes'});
     errorbar(S_SMOOTH(2, :), ksigma*sqrt(squeeze(P_SMOOTH(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS Envelopes'});
     %     errorbar(S_SMOOTH2(2, :), ksigma*sqrt(squeeze(P_SMOOTH2(2, 2, :)))); lgn = cat(2, lgn, {'\pm 3\sigma EKS2 Envelopes'});
-    plot(Lambda1, 'linewidth', 3); lgn = cat(2, lgn, {'Log Linear Regression'});
-    plot(Lambda2, 'linewidth', 3); lgn = cat(2, lgn, {'Generation-wise Geometric mean'});
-    plot(Lambda3, 'linewidth', 3); lgn = cat(2, lgn, {'Nonlinear Least Squares'});
+    plot(Lambda_LogLinReg, 'linewidth', 3); lgn = cat(2, lgn, {'Log Linear Regression'});
+    plot(Lambda_GeoGenRatios, 'linewidth', 3); lgn = cat(2, lgn, {'Generation-wise Geometric mean'});
+    plot(Lambda_NonLinLS, 'linewidth', 3); lgn = cat(2, lgn, {'Nonlinear Least Squares'});
     plot(S_PLUS(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF'});
     %     plot(S_PLUS2(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKF2'});
     plot(S_SMOOTH(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS'});
     %     plot(S_SMOOTH2(2, :), 'linewidth', 3); lgn = cat(2, lgn, {'EKS2'});
-    %     plot(Lambda2Smoothed, 'linewidth', 3); lgn = cat(2, lgn, {'Lambda2Smoothed'});
+    %     plot(Lambda_GeoGenRatiosSmoothed, 'linewidth', 3); lgn = cat(2, lgn, {'Lambda_GeoGenRatiosSmoothed'});
     legend(lgn);%, 'interpreter', 'none');
     title(CountryAndRegionList(k), 'interpreter', 'none');
     xlabel('Days since 100th case');
@@ -288,9 +296,9 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     % Regression/Classification Phase
     % Y Data
     
-    lambda_vector = Lambda1';
-    %     lambda_vector = Lambda2';
-    %     lambda_vector = Lambda2Smoothed';
+    lambda_vector = Lambda_LogLinReg';
+    %     lambda_vector = Lambda_GeoGenRatios';
+    %     lambda_vector = Lambda_GeoGenRatiosSmoothed';
     %     y_data = diff([lambda_vector(1) ; lambda_vector]);
     y_data = lambda_vector;
     
@@ -323,7 +331,7 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     y_data2_train = y_data2(1 : numTimeStepsTrain);
     y_data2_test = y_data2(numTimeStepsTrain + 1 : end);
     
-    y_data3 = Lambda2Baseline';
+    y_data3 = Lambda_GeoGenRatiosBaseline';
     for jj = 2 : length(y_data3)
         if(isnan(y_data3(jj)) || isinf(y_data3(jj)))
             y_data3(jj) = y_data3(jj -1);
@@ -664,8 +672,6 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
     if(plot_figures)
         %     dn = datenum(string(geoid_dates_unsorted),'yyyymmdd');
         dn = 1 : length(NewCasesSmoothed);
-        ind_pos = find(Lambda2 >= 0);
-        ind_neg = find(Lambda2 < 0);
         if(0)
             lgn = [];
             figure
@@ -673,11 +679,11 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
             %         plot(dn, InterventionPlans, 'color', 0.8*ones(1, 3)); lgn = cat(2, lgn, {'IP'});
             plot(dn, (InterventionPlansAvg - nanmean(InterventionPlansAvg))/nanstd(InterventionPlansAvg), 'color', 0.4*ones(1, 3)); lgn = cat(2, lgn, {'Mean IP'});
             %             plot(dn, InterventionPlansAvgIntNorm, 'color', 0.4*ones(1, 3)); lgn = cat(2, lgn, {'Mean IP Cumsum'});
-            %             plot(dn, Lambda1, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda1'});
-            %             plot(dn, Lambda2, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda2'});
-            plot(dn, Lambda2Baseline, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda2Baseline'});
-            %             plot(dn, Lambda2Smoothed, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda2Smoothed'});
-            %             plot(dn, Lambda3, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda3'});
+            %             plot(dn, Lambda_LogLinReg, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda_LogLinReg'});
+            %             plot(dn, Lambda_GeoGenRatios, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda_GeoGenRatios'});
+            plot(dn, Lambda_GeoGenRatiosBaseline, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda_GeoGenRatiosBaseline'});
+            %             plot(dn, Lambda_GeoGenRatiosSmoothed, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda_GeoGenRatiosSmoothed'});
+            %             plot(dn, Lambda_NonLinLS, 'linewidth', 2); lgn = cat(2, lgn, {'Lambda_NonLinLS'});
             if(LINEAR)
                 plot(dn , LambdaHatLinear, 'linewidth', 3); lgn = cat(2, lgn, {'LambdaHatLinear'});
             end
@@ -722,11 +728,11 @@ for k = 219 : 222%240 %122 : 125%225 %1 : NumGeoLocations
             %             plot(dn, NewCases); lgn = cat(2, lgn, {'NewCases'});
             %             plot(dn, nanstd(NewCases)*(InterventionPlansAvg - nanmean(InterventionPlansAvg))/nanstd(InterventionPlansAvg)); lgn = cat(2, lgn, {'Mean IP Scaled'});
             plot(dn, max(NewCases)*InterventionPlansAvg/max(InterventionPlansAvg)); lgn = cat(2, lgn, {'Mean IP Scaled'});
-            plot(dn, NewCasesSmoothed, 'Linewidth', 2); lgn = cat(2, lgn, {'NewCasesSmoothed'});
-            plot(dn(ind_pos), NewCasesSmoothed(ind_pos)', 'bo'); lgn = cat(2, lgn, {'NewCasesSmoothed Rising'});
-            plot(dn(ind_neg), NewCasesSmoothed(ind_neg)', 'ro'); lgn = cat(2, lgn, {'NewCasesSmoothed Falling'});
-            %         plot(dn, PointWiseFit1); lgn = cat(2, lgn, {'PointWiseFit1'});
-            %         plot(dn, PointWiseFit3); lgn = cat(2, lgn, {'PointWiseFit3'});
+            plot(dn, NewCasesSmoothed, 'k', 'Linewidth', 2); lgn = cat(2, lgn, {'NewCasesSmoothed'});
+            plot(dn(rates_inclining), NewCasesSmoothed(rates_inclining)', 'bo'); lgn = cat(2, lgn, {'NewCasesSmoothed Rising'});
+            plot(dn(rates_declining), NewCasesSmoothed(rates_declining)', 'ro'); lgn = cat(2, lgn, {'NewCasesSmoothed Falling'});
+            %         plot(dn, NewCasesFit_LogLinReg); lgn = cat(2, lgn, {'NewCasesFit_LogLinReg'});
+            %         plot(dn, NewCasesFit_NonLinLS); lgn = cat(2, lgn, {'NewCasesFit_NonLinLS'});
             if(LINEAR)
                 plot(dn, NewCasesEstimateLinear, 'Linewidth', 2); lgn = cat(2, lgn, {'NewCasesEstimateLinear'});
             end
