@@ -35,6 +35,7 @@ u_opt = zeros(size(u));
 
 % Forward Kalman Filtering Stage
 for k = 1 : T
+    k
     % Store results of s_minus from previous iteration
     S_MINUS(:, k) = sk_minus;
     P_MINUS(:, :, k) = Pk_minus;
@@ -161,11 +162,23 @@ end
 % Nonlinear state update
 function [u, s_k_plus_one] = NlinStateUpdate(u, s_k, w_bar, params)
 
-if(isnan(u)) % Optimal control
-    u = zeros(length(params.u_max), 1);
-    phi = params.epsilon * params.w - params.gamma * s_k(6) * params.a;
-    u(phi >= 0) = params.u_min(phi >= 0);
-    u(phi < 0) = params.u_max(phi < 0);
+% if(isnan(u)) % Optimal control
+%     u = zeros(length(params.u_max), 1);
+%     phi = params.epsilon * params.w - params.gamma * s_k(6) * params.a;
+%     u(phi >= 0) = params.u_min(phi >= 0);
+%     u(phi < 0) = params.u_max(phi < 0);
+% end
+
+% Optimal control replaces nans (by design feature)
+phi = params.epsilon * params.w - params.gamma * s_k(6) * params.a;
+for kk = 1 : length(u)
+    if(isnan(u(kk)))
+        if(phi(kk) >= 0)
+            u(kk) = params.u_min(kk);
+        else
+            u(kk) = params.u_max(kk);
+        end
+    end
 end
 
 rho = s_k(4) - s_k(5) - (1 - params.epsilon);
@@ -202,10 +215,22 @@ A(2, 2) = 1 + params.dt * (s_k(1) * s_k(3) - params.beta);
 A(2, 3) = params.dt * s_k(1) * s_k(2);
 
 A(3, 3) = 1 - params.dt * params.gamma;
-if(isnan(u)) % entry non-zero only for optimal control (that is costate dependent)
-    x = -params.sigma * (s_k(6) - (params.epsilon * params.w)./(params.gamma .* params.a) );
-    A(3, 6) = - params.gamma * params.dt * params.sigma * params.a' * ((params.u_max - params.u_min) .* exp(x)./(1 + exp(x)).^2);
+% Sigmoid function:
+% % % if(isnan(u)) % entry non-zero only for optimal control (that is costate dependent)
+% % %     x = -params.sigma * (s_k(6) - (params.epsilon * params.w)./(params.gamma .* params.a) );
+% % %     A(3, 6) = - params.gamma * params.dt * params.sigma * params.a' * ((params.u_max - params.u_min) .* exp(x)./(1 + exp(x)).^2);
+% % % end
+% Linear slope:
+phi = params.epsilon * params.w - params.gamma * s_k(6) * params.a;
+for kk = 1 : length(u)
+    if(isnan(u(kk)))
+        if(phi(kk) > -1.0/params.sigma && phi(kk) < 1.0/params.sigma)
+            A(3, 6) = A(3, 6) - params.gamma * params.dt * (params.sigma/2) * params.a(kk) * (params.u_max(kk) - params.u_min(kk));
+        end
+    end
 end
+
+
 rho = s_k(4) - s_k(5) - (1 - params.epsilon);
 A(4, 2) = params.dt * s_k(3) * rho;
 A(4, 3) = params.dt * s_k(2) * rho;
