@@ -1,4 +1,4 @@
-function [u_opt, S_MINUS, S_PLUS, P_MINUS, P_PLUS, K_GAIN, S_SMOOTH, P_SMOOTH, innovations, rho] = NewCaseEKFEstimatorWithOptimalNPI(u, x, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order)
+function [u_opt, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, K_GAIN, innovations, rho] = NewCaseEKFEstimatorWithOptimalNPI(u, x, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order)
 % Estimates the parameters of an exponential fit using an Extended Kalman
 % Filter (EKF) and Extended Kalman Smoother (EKS) over the number of new cases
 %
@@ -35,7 +35,6 @@ u_opt = zeros(size(u));
 
 % Forward Kalman Filtering Stage
 for k = 1 : T
-    k
     % Store results of s_minus from previous iteration
     S_MINUS(:, k) = sk_minus;
     P_MINUS(:, :, k) = Pk_minus;
@@ -66,7 +65,7 @@ for k = 1 : T
         sk_plus = sk_minus + Kgain * innovations(:, k);                 % As posteriori state estimate
     else
         innovations(:, k) = 0;
-        Kgain = 0; % Kalman gain
+        Kgain = zeros(m, n); % Kalman gain
         Pk_plus = Pk_minus;
         sk_plus = sk_minus; % As posteriori state estimate
     end
@@ -155,8 +154,8 @@ s_k(3) = min(params.alpha_max, max(params.alpha_min, s_k(3)));
 end
 
 % Hard margins on observations
-function s_k = ObsHardMargins(s_k, params)
-
+function x_k = ObsHardMargins(x_k, params)
+    x_k = max(0, x_k);
 end
 
 % Nonlinear state update
@@ -199,7 +198,13 @@ end
 
 % Nonlinear observation update
 function x_k = NlinObsUpdate(u, s_k, v_bar, params)
-x_k = s_k(1) * s_k(2) * s_k(3) + v_bar;
+    if(isequal(params.obs_type, 'NEWCASES'))
+        x_k = s_k(1) * s_k(2) * s_k(3) + v_bar;
+    elseif(isequal(params.obs_type, 'TOTALCASES'))
+        x_k = 1 - s_k(1) + v_bar; % following the revised model that takes total cases as input
+    else
+        error('unknown observation type');
+    end
 end
 
 % State equation Jacobian
@@ -253,8 +258,15 @@ end
 
 % Observation equation Jacobian
 function [C, D] = ObsJacobian(u, s_k, v_bar, params)
-C = [s_k(2)*s_k(3), s_k(1)*s_k(3), s_k(1)*s_k(2), 0 , 0, 0];
-D = 1;
+    if(isequal(params.obs_type, 'NEWCASES'))
+        C = [s_k(2)*s_k(3), s_k(1)*s_k(3), s_k(1)*s_k(2), 0 , 0, 0];
+        D = 1;
+    elseif(isequal(params.obs_type, 'TOTALCASES'))
+        C = [-1, 0, 0, 0 , 0, 0]; % following the revised model that takes total cases as input
+        D = 1;
+    else
+        error('unknown observation type');
+    end
 end
 
 % State equation Hessian terms

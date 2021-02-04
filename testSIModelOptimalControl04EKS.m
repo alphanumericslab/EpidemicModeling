@@ -70,7 +70,7 @@ npi_weights = NumNPI*npi_weights/sum(npi_weights);
 
 human_npi_cost_factor = 0.001; % [0, 1]: 0 neglects NPI cost and 1 neglects human factor!
 
-for k = 3 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocations
+for k = 1:1%3 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocations
     k
     switch start_date_criterion
         case 'MIN_CASE_BASED'
@@ -235,7 +235,7 @@ for k = 3 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
     grid
     
     % Generate a test scenario with the same set of weights
-    num_random_input_monte_carlo_runs = 10;
+    num_random_input_monte_carlo_runs = 1;
     J0 = zeros(1, num_random_input_monte_carlo_runs);
     J1 = zeros(1, num_random_input_monte_carlo_runs);
     J = zeros(1, num_random_input_monte_carlo_runs);
@@ -270,11 +270,11 @@ for k = 3 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
         %[J0(kk), J1(kk), J(kk)] = NPICost(s.*i.*alpha, control_input_opt, diag(npi_weights) * ones(NumNPI, size(control_input_opt, 2)), human_npi_cost_factor);
     end
 
-    figure
-    hold on
-    plot(J0, J1, 'bo');
-    plot(J0_opt, J1_opt, 'ro');
-    grid
+%     figure
+%     hold on
+%     plot(J0, J1, 'bo');
+%     plot(J0_opt, J1_opt, 'ro');
+%     grid
     
     
     % 5- Find the optimal controls for the trained model
@@ -334,35 +334,35 @@ for k = 3 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
     
     
     
-    figure
-    subplot(211)
-    plot(N_population * NewCasesSmoothedNormalized, 'linewidth', 2);
-    hold on
-    plot(N_population * S_PLUS(1, :).*S_PLUS(2, :).*S_PLUS(3, :));
-    plot(N_population * S_SMOOTH(1, :).*S_SMOOTH(2, :).*S_SMOOTH(3, :));
-    plot(N_population * S_PLUS2(1, :).*S_PLUS2(2, :).*S_PLUS2(3, :));
-    plot(N_population * S_SMOOTH2(1, :).*S_SMOOTH2(2, :).*S_SMOOTH2(3, :));
-    legend('NewCases', 'PLUS', 'SMOOTH', 'PLUS2', 'SMOOTH2');
-    title(CountryAndRegionList(k), 'interpreter', 'none');
-    grid;
-    
-    subplot(212);
-    plot(y_data_train);
-    hold on;
-    plot(y_data_train2);
-    plot(y_pred_lasso);
-    plot(y_pred_lasso2);
-    grid
-    legend('alpha', 'alpha 2', 'alpha lasso', 'alpha lasso 2');
-    
-    % % %     reply = input('Do you want more regiond? Y/N [Y]:','s');
-    % % %     if isempty(reply)
-    % % %         reply = 'Y';
-    % % %     end
-    % % %     if(~isequal(upper(reply), 'Y'))
-    % % %         break;
-    % % %     end
-    close all
+% % %     figure
+% % %     subplot(211)
+% % %     plot(N_population * NewCasesSmoothedNormalized, 'linewidth', 2);
+% % %     hold on
+% % %     plot(N_population * S_PLUS(1, :).*S_PLUS(2, :).*S_PLUS(3, :));
+% % %     plot(N_population * S_SMOOTH(1, :).*S_SMOOTH(2, :).*S_SMOOTH(3, :));
+% % %     plot(N_population * S_PLUS2(1, :).*S_PLUS2(2, :).*S_PLUS2(3, :));
+% % %     plot(N_population * S_SMOOTH2(1, :).*S_SMOOTH2(2, :).*S_SMOOTH2(3, :));
+% % %     legend('NewCases', 'PLUS', 'SMOOTH', 'PLUS2', 'SMOOTH2');
+% % %     title(CountryAndRegionList(k), 'interpreter', 'none');
+% % %     grid;
+% % %     
+% % %     subplot(212);
+% % %     plot(y_data_train);
+% % %     hold on;
+% % %     plot(y_data_train2);
+% % %     plot(y_pred_lasso);
+% % %     plot(y_pred_lasso2);
+% % %     grid
+% % %     legend('alpha', 'alpha 2', 'alpha lasso', 'alpha lasso 2');
+% % %     
+% % %     % % %     reply = input('Do you want more regiond? Y/N [Y]:','s');
+% % %     % % %     if isempty(reply)
+% % %     % % %         reply = 'Y';
+% % %     % % %     end
+% % %     % % %     if(~isequal(upper(reply), 'Y'))
+% % %     % % %         break;
+% % %     % % %     end
+% % %     close all
     
     if(0)
         
