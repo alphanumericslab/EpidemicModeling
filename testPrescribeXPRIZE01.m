@@ -59,6 +59,9 @@ ComumnNames = TrainedModelParams(1, :);
 TrainedModelParams = TrainedModelParams(2 : end, :);
 npi_weights = rand(1, NumNPI);
 npi_weights = NumNPI*npi_weights/sum(npi_weights);
+s_noise_std = 1e-8;
+i_noise_std = 1e-8;
+alpha_noise_std = 1e-8;
 for k = 1 : 50% length(TrainedModelParams) % the first row has the names
     k
     CountryName = TrainedModelParams{k, 1};
@@ -70,10 +73,10 @@ for k = 1 : 50% length(TrainedModelParams) % the first row has the names
     a2 = TrainedModelParams{k, 7};
     
     % select parameter set from training phase
-    a = a1;
-    b = b1;
-    %     a = a2;
-    %     b = b2;
+    %     a = a1;
+    %     b = b1;
+    a = a2;
+    b = b2;
     
     % ENFORCE MONOTONICITY OF THE LASSO MODEL
     %     a(a < 0 ) = 0;
@@ -83,11 +86,11 @@ for k = 1 : 50% length(TrainedModelParams) % the first row has the names
     
     % generate historic data
     u_historic = zeros(NumNPI, num_days_before_opt_control);
-    [s_historic, i_historic, alpha_historic] = SIalpha_Controlled(u_historic, IP_MAXES, alpha_min, alpha_max, gamma, alpha0, a, b, beta, s0, i0, num_days_before_opt_control, dt);
+    [s_historic, i_historic, alpha_historic] = SIalpha_Controlled(u_historic, s0, i0, alpha0, IP_MAXES, alpha_min, alpha_max, gamma, a, b, beta, s_noise_std, i_noise_std, alpha_noise_std, num_days_before_opt_control, dt);
     
     % generate zero control scenario
     u_zero_control = zeros(NumNPI, num_days_during_opt_control);
-    [s_zero_control, i_zero_control, alpha_zero_control] = SIalpha_Controlled(u_zero_control, IP_MAXES, alpha_min, alpha_max, gamma, alpha_historic(end), a, b, beta, s_historic(end), i_historic(end), num_days_during_opt_control, dt);
+    [s_zero_control, i_zero_control, alpha_zero_control] = SIalpha_Controlled(u_zero_control, s_historic(end), i_historic(end), alpha_historic(end), IP_MAXES, alpha_min, alpha_max, gamma, a, b, beta, s_noise_std, i_noise_std, alpha_noise_std, num_days_during_opt_control, dt);
     s_zero_control = cat(2, s_historic, s_zero_control);
     i_zero_control = cat(2, i_historic, i_zero_control);
     alpha_zero_control = cat(2, alpha_historic, alpha_zero_control);
@@ -96,7 +99,7 @@ for k = 1 : 50% length(TrainedModelParams) % the first row has the names
     
     % generate full (max) control scenario
     u_full_control = repmat(IP_MAXES, 1, num_days_during_opt_control);
-    [s_full_control, i_full_control, alpha_full_control] = SIalpha_Controlled(u_full_control, IP_MAXES, alpha_min, alpha_max, gamma, alpha_historic(end), a, b, beta, s_historic(end), i_historic(end), num_days_during_opt_control, dt);
+    [s_full_control, i_full_control, alpha_full_control] = SIalpha_Controlled(u_full_control, s_historic(end), i_historic(end), alpha_historic(end), IP_MAXES, alpha_min, alpha_max, gamma, a, b, beta, s_noise_std, i_noise_std, alpha_noise_std, num_days_during_opt_control, dt);
     s_full_control = cat(2, s_historic, s_full_control);
     i_full_control = cat(2, i_historic, i_full_control);
     alpha_full_control = cat(2, alpha_historic, alpha_full_control);
@@ -184,7 +187,7 @@ for k = 1 : 50% length(TrainedModelParams) % the first row has the names
 %         grid
 %         close all
         
-        [s_opt_control, i_opt_control, alpha_opt_control] = SIalpha_Controlled(u_opt_control(:, end - num_days_during_opt_control + 1 : end), IP_MAXES, alpha_min, alpha_max, gamma, alpha_historic(end), a, b, beta, s_historic(end), i_historic(end), num_days_during_opt_control, dt);
+        [s_opt_control, i_opt_control, alpha_opt_control] = SIalpha_Controlled(u_opt_control(:, end - num_days_during_opt_control + 1 : end), s_historic(end), i_historic(end), alpha_historic(end), IP_MAXES, alpha_min, alpha_max, gamma, a, b, beta, s_noise_std, i_noise_std, alpha_noise_std, num_days_during_opt_control, dt);
         s_opt_control = cat(2, s_historic, s_opt_control);
         i_opt_control = cat(2, i_historic, i_opt_control);
         alpha_opt_control = cat(2, alpha_historic, alpha_opt_control);
@@ -222,7 +225,7 @@ for k = 1 : 50% length(TrainedModelParams) % the first row has the names
             end
         end
         %         u = u + 0.1*rand(size(u)); % add noise to input
-        [s_controlled, i_controlled, alpha_controlled] = SIalpha_Controlled(u, IP_MAXES, alpha_min, alpha_max, gamma, alpha_historic(end), a, b, beta, s_historic(end), i_historic(end), num_days_during_opt_control, dt);
+        [s_controlled, i_controlled, alpha_controlled] = SIalpha_Controlled(u, s_historic(end), i_historic(end), alpha_historic(end), IP_MAXES, alpha_min, alpha_max, gamma, a, b, beta, s_noise_std, i_noise_std, alpha_noise_std, num_days_during_opt_control, dt);
         
         s = [s_historic, s_controlled];
         i = [i_historic, i_controlled];

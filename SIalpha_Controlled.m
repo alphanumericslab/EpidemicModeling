@@ -1,4 +1,4 @@
-function [s, i, alpha] = SIalpha_Controlled(u, u_max, alpha_min, alpha_max, gamma, alpha0, a, b, beta, s0, i0, K, dt)
+function [s, i, alpha] = SIalpha_Controlled(u, s0, i0, alpha0, u_max, alpha_min, alpha_max, gamma, a, b, beta, s_noise_std, i_noise_std, alpha_noise_std, K, dt)
 %
 % A numerical solver of the nonlinear susceptible-infected (SI) alpha model with
 % controlled infection rate
@@ -19,7 +19,7 @@ alpha(1) = alpha0;
 
 % State equations
 for t = 1 : K - 1
-    s(t + 1) = max(0.0, min(1.0, s(t) - dt * alpha(t) * s(t) * i(t)));
-    i(t + 1) = max(0.0, min(1.0, i(t) + dt * (alpha(t) * s(t) * i(t) - beta * i(t))));
-    alpha(t + 1) = max(alpha_min, min(alpha_max, alpha(t) + dt * (-gamma * alpha(t) + gamma * b + gamma * a'*(u_max - u(:, t)))));
+    s(t + 1) = max(0.0, min(1.0, s(t) - dt * (alpha(t) * s(t) * i(t) + randn * s_noise_std)));
+    i(t + 1) = max(0.0, min(1.0, i(t) + dt * (alpha(t) * s(t) * i(t) - beta * i(t) + randn * i_noise_std)));
+    alpha(t + 1) = max(alpha_min, min(alpha_max, alpha(t) + dt * (-gamma * alpha(t) + gamma * b + gamma * a'*(u_max - u(:, t)) + randn * alpha_noise_std)));
 end
