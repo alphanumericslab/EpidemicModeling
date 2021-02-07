@@ -1,4 +1,4 @@
-function [s, i, alpha] = SIalpha_Controlled(u, u_max, alpha_min, alpha_max, gamma, alpha0, beta, s0, i0, K, dt)
+function [s, i, alpha] = SIalpha_Controlled(u, u_max, alpha_min, alpha_max, gamma, alpha0, a, b, beta, s0, i0, K, dt)
 %
 % A numerical solver of the nonlinear susceptible-infected (SI) alpha model with
 % controlled infection rate
@@ -21,5 +21,5 @@ alpha(1) = alpha0;
 for t = 1 : K - 1
     s(t + 1) = max(0.0, min(1.0, s(t) - dt * alpha(t) * s(t) * i(t)));
     i(t + 1) = max(0.0, min(1.0, i(t) + dt * (alpha(t) * s(t) * i(t) - beta * i(t))));
-    alpha(t + 1) = max(alpha_min, min(alpha_max, alpha(t) + dt * (-gamma * alpha(t) + gamma * b + gamma * a'*(u_max - u))));
+    alpha(t + 1) = max(alpha_min, min(alpha_max, alpha(t) + dt * (-gamma * alpha(t) + gamma * b + gamma * a'*(u_max - u(:, t)))));
 end
