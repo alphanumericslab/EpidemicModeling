@@ -1,4 +1,4 @@
-function [u_opt, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, K_GAIN, innovations, rho] = GenericExtendedKalmanFilter(u, x, handles, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order)
+function [u_opt, u_opt_smooth, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, K_GAIN, innovations, rho] = GenericExtendedKalmanFilter(u, x, handles, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order)
 % A generic Extended Kalman Filter (EKF) and fixed-interval Extended Kalman Smoother (EKS)
 %
 %
@@ -62,6 +62,7 @@ R = R_v;
 
 % equal to control input whenever available, otherwise equal to optimal control
 u_opt = zeros(size(u));
+u_opt_smooth = zeros(size(u));
 
 % Forward Kalman Filtering Stage
 for k = 1 : T
@@ -151,19 +152,19 @@ P_SMOOTH(:, :, T) = P_PLUS(:, :, T);
 % Replace estimates with boundary conditions, if available
 fixed_end_state = find(~isnan(s_final));
 S_SMOOTH(fixed_end_state, T) = s_final(fixed_end_state);
-S_MINUS(fixed_end_state, T) = s_final(fixed_end_state);
+% % % S_MINUS(fixed_end_state, T) = s_final(fixed_end_state);
 
 fixed_end_covs = find(~isnan(Ps_final));
 [row,col] = ind2sub(size(Ps_final), fixed_end_covs);
 for kk = 1 : length(row)
     P_SMOOTH(row(kk), col(kk), T) = Ps_final(row(kk), col(kk));
-    P_MINUS(row(kk), col(kk), T) = Ps_final(row(kk), col(kk));
+    % % %     P_MINUS(row(kk), col(kk), T) = Ps_final(row(kk), col(kk));
 end
 
 for k = T - 1 : -1 : 1
     sk_plus = S_PLUS(:, k);
     Ak_plus = handles.StateJacobians(u(:, k), sk_plus, w_bar, params);
-%     J = (P_PLUS(:, :, k) * Ak_plus') / (P_MINUS(:, :, k + 1));
+    %     J = (P_PLUS(:, :, k) * Ak_plus') / (P_MINUS(:, :, k + 1));
     J = (P_PLUS(:, :, k) * Ak_plus') * pinv(P_MINUS(:, :, k + 1));
     S_SMOOTH(:, k) = S_PLUS(:, k) + J * (S_SMOOTH(:, k + 1) - S_MINUS(:, k + 1));
     
@@ -171,6 +172,9 @@ for k = T - 1 : -1 : 1
     S_SMOOTH(:, k) = handles.StateHardMargins(S_SMOOTH(:, k), params);
     
     P_SMOOTH(:, :, k) = P_PLUS(:, :, k) - J * (P_MINUS(:, :, k+1) - P_SMOOTH(:, :, k+1)) * J';
+
+    % rerun the state equation for the optimal input
+    [u_opt_smooth(:, k), ~] = handles.NlinStateUpdate(u(:, k), S_SMOOTH(:, k), w_bar, params);
 end
 
 % Squeeze excess dimensions if applicable

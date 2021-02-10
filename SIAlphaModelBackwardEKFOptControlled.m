@@ -1,4 +1,4 @@
-function [u_opt, u_opt_smooth, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, K_GAIN, innovations, rho] = SIAlphaModelBackwardEKF(u, x, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order)
+function [u_opt, u_opt_smooth, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, K_GAIN, innovations, rho] = SIAlphaModelBackwardEKFOptControlled(u, x, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order)
 % Estimates the parameters of an exponential fit using an Extended Kalman
 % Filter (EKF) and Extended Kalman Smoother (EKS) over the number of new cases
 %
@@ -59,12 +59,38 @@ end
 % Nonlinear state update
 function [u, s_k_plus_one] = NlinStateUpdateFlipped(u, s_k, w_bar, params)
 
-s_k_plus_one = zeros(3, 1);
+% if(isnan(u)) % Optimal control
+%     u = zeros(length(params.u_max), 1);
+%     phi = params.epsilon * params.w - params.gamma * s_k(6) * params.a;
+%     u(phi >= 0) = params.u_min(phi >= 0);
+%     u(phi < 0) = params.u_max(phi < 0);
+% end
+
+% Optimal control replaces nans (by design feature)
+phi = params.epsilon * params.w - params.gamma * s_k(6) * params.a;
+for kk = 1 : length(u)
+    if(isnan(u(kk)))
+        if(phi(kk) > 0) % or >= 0 ?
+            u(kk) = params.u_min(kk);
+        else
+            u(kk) = params.u_max(kk);
+        end
+    end
+end
+
+rho = s_k(4) - s_k(5) - (1 - params.epsilon);
+
+s_k_plus_one = zeros(6, 1);
 
 % State equations
 s_k_plus_one(1) = max(0.0, min(1.0, s_k(1) + params.dt * s_k(3) * s_k(1) * s_k(2)));
 s_k_plus_one(2) = max(0.0, min(1.0, s_k(2) - params.dt * (s_k(3) * s_k(1) * s_k(2) - params.beta * s_k(2))));
 s_k_plus_one(3) = max(params.alpha_min, min(params.alpha_max, s_k(3) - params.dt * (-params.gamma * s_k(3) + params.gamma * params.b + params.gamma * params.a'*(params.u_max - u))));
+
+% Costate equations
+s_k_plus_one(4) = s_k(4) - params.dt * rho * s_k(3) * s_k(2);
+s_k_plus_one(5) = s_k(5) - params.dt * (rho * s_k(3) * s_k(1) + params.beta * s_k(5));
+s_k_plus_one(6) = s_k(6) - params.dt * (rho * s_k(1) * s_k(2) + params.gamma * s_k(6));
 
 end
 
@@ -82,7 +108,7 @@ end
 % State equation Jacobian
 function [A, B] = StateJacobiansFlipped(u, s_k, w_bar, params)
 
-A = zeros(3);
+A = zeros(6);
 A(1, 1) = 1 + params.dt * s_k(3) * s_k(2);
 A(1, 2) = params.dt * s_k(3) * s_k(1);
 A(1, 3) = params.dt * s_k(1) * s_k(2);
@@ -92,17 +118,50 @@ A(2, 2) = 1 - params.dt * (s_k(1) * s_k(3) - params.beta);
 A(2, 3) = - params.dt * s_k(1) * s_k(2);
 
 A(3, 3) = 1 + params.dt * params.gamma;
+% Sigmoid function:
+% % % if(isnan(u)) % entry non-zero only for optimal control (that is costate dependent)
+% % %     x = -params.sigma * (s_k(6) - (params.epsilon * params.w)./(params.gamma .* params.a) );
+% % %     A(3, 6) = params.gamma * params.dt * params.sigma * params.a' * ((params.u_max - params.u_min) .* exp(x)./(1 + exp(x)).^2);
+% % % end
 
-B = eye(3);
+% Linear slope:
+phi = params.epsilon * params.w - params.gamma * s_k(6) * params.a;
+for kk = 1 : length(u)
+    if(isnan(u(kk)))
+        if(phi(kk) > -1.0/params.sigma && phi(kk) < 1.0/params.sigma)
+            A(3, 6) = A(3, 6) + params.gamma * params.dt * (params.sigma/2) * params.a(kk) * (params.u_max(kk) - params.u_min(kk));
+        end
+    end
+end
+
+
+rho = s_k(4) - s_k(5) - (1 - params.epsilon);
+A(4, 2) = -params.dt * s_k(3) * rho;
+A(4, 3) = -params.dt * s_k(2) * rho;
+A(4, 4) = 1 - params.dt * s_k(2) * s_k(3);
+A(4, 5) = params.dt * s_k(2) * s_k(3);
+
+A(5, 1) = -params.dt * s_k(3) * rho;
+A(5, 3) = -params.dt * s_k(1) * rho;
+A(5, 4) = -params.dt * s_k(1) * s_k(3);
+A(5, 5) = 1 + params.dt * (s_k(1) * s_k(3) - params.beta);
+
+A(6, 1) = -params.dt * s_k(2) * rho;
+A(6, 2) = -params.dt * s_k(1) * rho;
+A(6, 4) = -params.dt * s_k(1) * s_k(2);
+A(6, 5) = params.dt * s_k(1) * s_k(2);
+A(6, 6) = 1 - params.dt * params.gamma;
+
+B = eye(6);
 end
 
 % Observation equation Jacobian
 function [C, D] = ObsJacobianFlipped(u, s_k, v_bar, params)
     if(isequal(params.obs_type, 'NEWCASES'))
-        C = [s_k(2)*s_k(3), s_k(1)*s_k(3), s_k(1)*s_k(2)];
+        C = [s_k(2)*s_k(3), s_k(1)*s_k(3), s_k(1)*s_k(2), 0 , 0, 0];
         D = 1;
     elseif(isequal(params.obs_type, 'TOTALCASES'))
-        C = [-1, 0, 0]; % following the revised model that takes total cases as input
+        C = [-1, 0, 0, 0 , 0, 0]; % following the revised model that takes total cases as input
         D = 1;
     else
         error('unknown observation type');
@@ -111,11 +170,11 @@ end
 
 % State equation Hessian terms
 function [fs, Cs, fw, Cw] = StateHessianTermsFlipped(u, s_k, Pk, w_bar, Qk, params)
-fs = zeros(3, 1);
-Cs = zeros(3);
+fs = zeros(6, 1);
+Cs = zeros(6);
 
-fw = zeros(3, 1);
-Cw = zeros(3);
+fw = zeros(6, 1);
+Cw = zeros(6);
 
 end
 

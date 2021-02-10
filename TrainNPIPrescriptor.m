@@ -114,6 +114,7 @@ for k = 1 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
         end
         % Smooth the newcases time series
         NewCasesSmoothed = filter(ones(1, SmoothingWinLen), SmoothingWinLen, NewCasesRefined); % causal
+        NewCasesSmoothedZeroLag = filtfilt(ones(1, round(SmoothingWinLen/2)), round(SmoothingWinLen/2), NewCasesRefined); % causal
         NewCasesSmoothedNormalized = NewCasesSmoothed / N_population;
         
         % A smooth version of the confirmed cases time series
@@ -135,7 +136,7 @@ for k = 1 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
         
         % 1- Apply an EKF to find first estimates of alpha (with zero control assumption)
         %     I0 = min_cases; % initial number of cases
-        first_case_indexes = find(NewCasesSmoothed > 0, 7, 'first'); % find the first non-zero indexes
+        first_case_indexes = find(NewCasesSmoothed > 0, 7, 'first'); % find the first non-zero indexes (average over the first week)
         I0 = max(min_cases, mean(NewCasesSmoothed(first_case_indexes))); % initial number of cases
         params.dt = 1.0; % temporal time scale
         control_input = zeros(size(InterventionPlans')); % The first round assumes zero inputs
@@ -155,7 +156,7 @@ for k = 1 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
         Tdays = 21*params.dt;
         params.beta = -log(prob_contagion_after_Tdays)/Tdays; % recovery rate from being contagious (inverse time)
         
-        R0 = 1.1; % An assumption during outbreak
+        R0 = 2.5; % An assumption during outbreak
         alpha0 = params.beta + log(R0)/params.dt; % The logic is that in the SIalpha model, during the outbreak R0 = exp(dt*(alpha - beta)) and alpha = beta is the metastable threshold (R0 = 1) %1.0/N_population; % the per-population normalization is needed
         
         params.sigma = 10000; % sigmoid function slope
@@ -163,11 +164,11 @@ for k = 1 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
         gamma = 0.995; % Kalman gain stability factor (set very close to 1, or equal to 1 to disable the feature)
         inv_monitor_len = 21; % Window length for innovations process whiteness monitoring
         order = 1; % 1 for standard EKF; 2 for second-order EKF
-        q_alpha = 2e-3;
+        q_alpha = 1e-2;
         %         lambda_0 = 1.0;
         %         q_lambda = 1e-3;
         %         Q_w = 1*(params.dt)^2*diag([10.0*I0/N_population, 10.0*I0/N_population, q_alpha, q_lambda, q_lambda, q_lambda].^2); % Process noise covariance matrix
-        Q_w = (params.dt)^2*diag([10.0*I0/N_population, 10.0*I0/N_population, q_alpha].^2); % Process noise covariance matrix
+        Q_w = (params.dt)^2*diag([10.0*I0/N_population, 30.0*I0/N_population, q_alpha].^2); % Process noise covariance matrix
         %         w_bar = zeros(6, 1); % mean value of process noises
         w_bar = zeros(3, 1); % mean value of process noises
         v_bar = 0; % mean value of observation noise
@@ -180,23 +181,23 @@ for k = 1 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
         %         Ps_final = nan(6); % Set the finite horizon end points (not required during first round)
         Ps_final = nan(3); % Set the finite horizon end points (not required during first round)
         if(isequal(params.obs_type, 'TOTALCASES'))
-            R_v = var((NewCasesSmoothed - NewCasesRefined)/N_population); % Observation noise variance
+            R_v = var((NewCasesSmoothedZeroLag - NewCasesRefined)/N_population); % Observation noise variance
             %             [~, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, ~, ~, rho] = NewCaseEKFEstimatorWithOptimalNPI(control_input, ConfirmedCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
-            [~, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, ~, ~, rho] = SIAlphaModelEKF(control_input, ConfirmedCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
+            [~, ~, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, ~, ~, rho] = SIAlphaModelEKF(control_input, ConfirmedCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
         elseif(isequal(params.obs_type, 'NEWCASES'))
-            R_v = var((NewCasesSmoothed - NewCasesRefined)/N_population); % Observation noise variance
+            R_v = var((NewCasesSmoothedZeroLag - NewCasesRefined)/N_population); % Observation noise variance
             %             [~, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, ~, ~, rho] = NewCaseEKFEstimatorWithOptimalNPI(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
-            [~, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, ~, ~, rho] = SIAlphaModelEKF(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
+            [~, ~, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, ~, ~, rho] = SIAlphaModelEKF(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
         end
         
         % 2- Apply LASSO over alpha
         x_data_train = NPI_MAXES(:, ones(size(InterventionPlans, 1), 1))' - InterventionPlans;
-        %     y_data_train = S_SMOOTH(3, :)'; % alpha
-        y_data_train = S_PLUS(3, :)'; % alpha
+        y_data_train = S_SMOOTH(3, :)'; % alpha
+        %         y_data_train = S_PLUS(3, :)'; % alpha
         
         REGRESSION_TYPE = 'NONNEGATIVELS'; % 'LASSO' or 'NONNEGATIVELS'
         if(isequal(REGRESSION_TYPE, 'LASSO'))
-            [B_LASSO, FitInfo] = lasso(x_data_train, y_data_train, 'CV',50);
+            [B_LASSO, FitInfo] = lasso(x_data_train, y_data_train, 'CV',10);
             idxLambda1SE = FitInfo.Index1SE;
             coef = B_LASSO(:, idxLambda1SE);
             coef0 = FitInfo.Intercept(idxLambda1SE);
@@ -217,23 +218,23 @@ for k = 1 : NumGeoLocations%index_ : index_%240 %122 : 125%225 %1 : NumGeoLocati
         control_input = InterventionPlans'; % The second round works with real inputs
         %s_init = [(N_population - I0)/N_population ; I0/N_population ; S_SMOOTH(3, 1) ; S_SMOOTH(4, 1) ; S_SMOOTH(5, 1) ; S_SMOOTH(6, 1)]; % initial state vector
         if(isequal(params.obs_type, 'TOTALCASES'))
-            R_v = var((NewCasesSmoothed - NewCasesRefined)/N_population); % Observation noise variance
+            R_v = 0.1 * var((NewCasesSmoothed - NewCasesRefined)/N_population); % Observation noise variance
             %             [~, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, ~, ~, rho] = NewCaseEKFEstimatorWithOptimalNPI(control_input, ConfirmedCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
-            [~, S_MINUS2, S_PLUS2, S_SMOOTH2, P_MINUS2, P_PLUS2, P_SMOOTH2, ~, ~, rho2] = SIAlphaModelEKF(control_input, ConfirmedCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, 1);
+            [~, ~, S_MINUS2, S_PLUS2, S_SMOOTH2, P_MINUS2, P_PLUS2, P_SMOOTH2, ~, ~, rho2] = SIAlphaModelEKF(control_input, ConfirmedCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, 1);
         elseif(isequal(params.obs_type, 'NEWCASES'))
-            R_v = var((NewCasesSmoothed - NewCasesRefined)/N_population); % Observation noise variance
+            R_v = 0.1 * var((NewCasesSmoothed - NewCasesRefined)/N_population); % Observation noise variance
             %         [~, S_MINUS2, S_PLUS2, S_SMOOTH2, P_MINUS2, P_PLUS2, P_SMOOTH2, ~, ~, rho2] = NewCaseEKFEstimatorWithOptimalNPI(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, 1);
-            [~, S_MINUS2, S_PLUS2, S_SMOOTH2, P_MINUS2, P_PLUS2, P_SMOOTH2, ~, ~, rho2] = SIAlphaModelEKF(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, 1);
+            [~, ~, S_MINUS2, S_PLUS2, S_SMOOTH2, P_MINUS2, P_PLUS2, P_SMOOTH2, ~, ~, rho2] = SIAlphaModelEKF(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, 1);
             % % %             [~, S_MINUS_backward, S_PLUS_backward, S_SMOOTH_backward, P_MINUS_backward, P_PLUS_backward, P_SMOOTH_backward, ~, ~, rho_backward] = SIAlphaModelBackwardEKF(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order);
         end
         
         % 4- Apply second LASSO over refined alpha
         x_data_train2 = NPI_MAXES(:, ones(size(InterventionPlans, 1), 1))' - InterventionPlans;
-        %         y_data_train2 = S_SMOOTH2(3, :)';
-        y_data_train2 = S_PLUS2(3, :)';
+        y_data_train2 = S_SMOOTH2(3, :)';
+        %         y_data_train2 = S_PLUS2(3, :)';
         
         if(isequal(REGRESSION_TYPE, 'LASSO'))
-            [B_LASSO2, FitInfo2] = lasso(x_data_train2, y_data_train2, 'CV',50);
+            [B_LASSO2, FitInfo2] = lasso(x_data_train2, y_data_train2, 'CV',10);
             idxLambda1SE2 = FitInfo2.Index1SE;
             coef_2 = B_LASSO2(:, idxLambda1SE2);
             coef0_2 = FitInfo2.Intercept(idxLambda1SE2);
