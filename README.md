@@ -14,15 +14,15 @@ The repository also contains the models and Matlab codes developed by the Alphan
 
 #### Sample Bi-objective Prescriptions
 
-| <img height="250px" src="Figures/Afghanistan.png"> | <img height="250px" src="Figures/France.png"> | <img height="250px" src="Figures/Iran.png"> | <img height="250px" src="Figures/UK.png"> |
+| <img height="250px" src="Figures/Afghanistan.png"> | <img height="250px" src="Figures/France.png"> | <img height="250px" src="Figures/Iran.png"> |
 | :---: | :---: | :---: |
-| Afghanistan | France | Iran | UK |
-| <img height="250px" src="Figures/Germany.png"> | <img height="250px" src="Figures/Spain.png"> | <img height="250px" src="Figures/SriLanka.png"> | <img height="250px" src="Figures/Brazil.png"> |
-| :---: | :---: | :---: |
-| Germany | Spain | Sri Lanka | Brazil |
-| <img height="250px" src="Figures/US.png"> | <img height="250px" src="Figures/Italy.png"> | <img height="250px" src="Figures/South Africa.png"> | <img height="250px" src="Figures/China.png"> |
-| :---: | :---: | :---: |
-| US | Italy | South Africa | China |
+| Afghanistan | France | Iran |
+| <img height="250px" src="Figures/Germany.png"> | <img height="250px" src="Figures/Spain.png"> | <img height="250px" src="Figures/SriLanka.png"> |
+| Germany | Spain | Sri Lanka |
+| <img height="250px" src="Figures/US.png"> | <img height="250px" src="Figures/Italy.png"> | <img height="250px" src="Figures/SouthAfrica.png"> |
+| US | Italy | South Africa |
+| <img height="250px" src="Figures/UK.png"> | <img height="250px" src="Figures/Brazil.png"> | <img height="250px" src="Figures/China.png"> |
+| UK | Brazil | China |
 
 
 #coronavirus #CoronavirusOutbreak #Epidemic #covid19outbreak
