@@ -71,7 +71,7 @@ npi_weights_day_wise = NumNPI*npi_weights./sm(ones(1, NumNPI), :);
 s_noise_std = 1e-8;
 i_noise_std = 1e-8;
 alpha_noise_std = 1e-9;
-for k = 84 : 84% length(TrainedModelParams) % the first row has the names
+for k = 33 : 33% length(TrainedModelParams) % the first row has the names
     k
     CountryName = TrainedModelParams{k, 1};
     RegionName = TrainedModelParams{k, 2};
