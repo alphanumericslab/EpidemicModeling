@@ -27,6 +27,7 @@ INCLUDED_IP = {'C1_School closing',... % see full descriptions at: https://githu
     'H3_Contact tracing',... % 'H4_Emergency investment in healthcare', 'H5_Investment in vaccines',...
     'H6_Facial Coverings',... %'H6_Flag',... % {'H7_Vaccination policy', 'H7_Flag',...%'Holidays'...
     };
+IP_MINS = zeros(12, 1); % Minimum values for the 12 phase NPI values defined in the oxford data set
 IP_MAXES = [3, 3, 2, 4, 2, 3, 2, 4, 2, 3, 2, 4]'; % Maximum values for the 12 phase NPI values defined in the oxford data set
 NumNPI = length(IP_MAXES);
 num_days_before_opt_control = 30;
@@ -58,7 +59,7 @@ npi_weights_day_wise = diag(npi_weights) * ones(NumNPI, num_days_before_opt_cont
 train_model = 1;
 if(train_model)
     %TrainNPIPrescriptor(START_DATE_TRAIN, END_DATE_TRAIN, LATEST_DATA_FILE, GEO_FILE, POPULATION_FILE, INCLUDED_IP, IP_MAXES, TRAINED_MODEL_PARAMS_FILE);
-    TrainPredictPrescribeNPI(npi_weights, human_npi_cost_factor, START_DATE_TRAIN, END_DATE_TRAIN, END_DATE_PREDICT_PRESCRIBE, LATEST_DATA_FILE, GEO_FILE, POPULATION_FILE, INCLUDED_IP, IP_MAXES, TRAINED_MODEL_PARAMS_FILE);
+    TrainPredictPrescribeNPI(npi_weights, human_npi_cost_factor, START_DATE_TRAIN, END_DATE_TRAIN, END_DATE_PREDICT_PRESCRIBE, LATEST_DATA_FILE, GEO_FILE, POPULATION_FILE, INCLUDED_IP, IP_MINS, IP_MAXES, TRAINED_MODEL_PARAMS_FILE);
 end
 
 % generate scenarios
