@@ -8,7 +8,8 @@ clc
 START_DATE_TRAIN = "2020-01-01"; % start time
 END_DATE_TRAIN = "2021-01-07"; % end time
 END_DATE_PREDICT_PRESCRIBE = "2021-04-07"; % end time
-LATEST_DATA_FILE = './../covid-policy-tracker/data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
+% LATEST_DATA_FILE = './../covid-policy-tracker/data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
+LATEST_DATA_FILE = 'xprize-sample-data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
 GEO_FILE = "xprize-sample-data/countries_regions.csv"; % countries and regions to include
 POPULATION_FILE = "xprize-sample-data/populations.csv"; % country and regional populations
 % TRAINED_MODEL_PARAMS_FILE = "xprize-sample-data/prescription_trained_params_lasso.mat"; % file to log the trained model parameters
@@ -38,7 +39,11 @@ costs_file = "xprize-sample-data/uniform_random_costs.csv";
 output_file = "xprize-sample-data/prescriptor2020-08-01_2020-08-04.csv";
 ip_file_historic = "xprize-sample-data/2020-09-30_historical_ip.csv";
 
-human_npi_cost_factor = 1e-6;  % [0, 1]: 0 neglects NPI cost and 1 neglects human factor!
+% human_npi_cost_factor = 1e-6;  % [0, 1]: 0 neglects NPI cost and 1 neglects human factor!
+num_pareto_front_points = 125;
+human_npi_cost_factor = logspace(-12.0, -1e-8, num_pareto_front_points);
+human_npi_cost_factor = cat(2, human_npi_cost_factor, linspace(1e-8, 1-1e-8, num_pareto_front_points));
+% num_pareto_front_points = num_pareto_front_points * 2;
 
 % Equal weights constant over time:
 npi_weights = ones(1, NumNPI);
