@@ -17,7 +17,7 @@ model_gamma_param = 7; % input to contact influence time constant
 observation_type = 'NEWCASES'; % TOTALCASES or NEWCASES
 num_days_for_beta_calculation = 21;
 prob_contagion_after_Tdays = 0.01;
-R0 = 2.5; % An assumption during outbreak
+R0 = 2.5; % An assumption during outbreak (https://doi.org/10.1016/S1473-3099(20)30484-9)
 REGRESSION_TYPE = 'NONNEGATIVELS'; % 'LASSO' or 'NONNEGATIVELS'
 
 % Convert training start date string to number
