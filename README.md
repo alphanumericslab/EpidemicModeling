@@ -15,12 +15,12 @@ The repository also contains the models and Matlab codes developed by the Alphan
 #### Sample Bi-objective Prescriptions
 We can see below the bi-objective optimization space for sample countries. Blue: random NPI inputs; Red: optimal *Pareto efficient* input NPI for 250 values of the human vs NPI cost parameter; Green: Full stringency case; Black: No stringency. The model was trained over historic NPI of the Oxford dataset from Jan 1, 2020 to Feb 7, 2021 and tested over 120 days ahead using our Team's predictor data. *Note:* These results have been obtained fully automatically, without any country-wise tweaking.
 
-| <img height="250px" src="Figures/Afghanistan.png"> | <img height="250px" src="Figures/France.png"> | <img height="250px" src="Figures/Iran.png"> |
+| <img width="250px" src="Figures/Afghanistan.png"> | <img width="250px" src="Figures/France.png"> | <img width="250px" src="Figures/Iran.png"> |
 | :---: | :---: | :---: |
 | Afghanistan | France | Iran |
-| <img height="250px" src="Figures/Germany.png"> | <img height="250px" src="Figures/Spain.png"> | <img height="250px" src="Figures/SriLanka.png"> |
+| <img width="250px" src="Figures/Germany.png"> | <img width="250px" src="Figures/Spain.png"> | <img width="250px" src="Figures/SriLanka.png"> |
 | Germany | Spain | Sri Lanka |
-| <img height="250px" src="Figures/US.png"> | <img height="250px" src="Figures/Italy.png"> | <img height="250px" src="Figures/SouthAfrica.png"> |
+| <img width="250px" src="Figures/US.png"> | <img width="250px" src="Figures/Italy.png"> | <img width="250px" src="Figures/SouthAfrica.png"> |
 | US | Italy | South Africa |
-| <img height="250px" src="Figures/UK.png"> | <img height="250px" src="Figures/Brazil.png"> | <img height="250px" src="Figures/China.png"> |
+| <img width="250px" src="Figures/UK.png"> | <img width="250px" src="Figures/Brazil.png"> | <img width="250px" src="Figures/China.png"> |
 | UK | Brazil | China |
