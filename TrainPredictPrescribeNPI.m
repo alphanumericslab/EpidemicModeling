@@ -1,11 +1,17 @@
 function TrainPredictPrescribeNPI(npi_weights, human_npi_cost_factor, start_train_date_str, end_train_date_str, end_predict_presscribe_date_str, data_file, geo_file, populations_file, included_IP, NPI_MINS, NPI_MAXES, trained_model_params_file)
 
+% A function for the prediction and prescription algorithm developed for the XPRIZE
+% Pandemic Response Challenge
+% (C) Reza Sameni, 2021
+% reza.sameni@gmail.com
+% https://github.com/alphanumericslab/EpidemicModeling
+
 % npi_weights: NPI weights; not used during training; only used during prescription phase.
 
 % parameters
 plot_results = true; % plot per-region/country plots or not
 SmoothingWinLen = 7; % window length used for smoothing the new cases
-min_cases = 10; % the absolute minimum number of cases at start date for processing each region/country
+min_cases = 1; % the absolute minimum number of cases at any time
 first_num_days_for_case_estimation = 7; % the first few days used to find an initial estimate of the first cases (only for EKF initialization)
 model_gamma_param = 7; % input to contact influence time constant
 observation_type = 'NEWCASES'; % TOTALCASES or NEWCASES
@@ -16,24 +22,31 @@ REGRESSION_TYPE = 'NONNEGATIVELS'; % 'LASSO' or 'NONNEGATIVELS'
 
 % Convert training start date string to number
 start_train_date_chars = char(start_train_date_str);
+start_train_date = datetime(str2double(start_train_date_chars(1:4)), str2double(start_train_date_chars(6:7)), str2double(start_train_date_chars(9:10)));
 dash_indexes = start_train_date_chars == '-';
 start_train_date_chars(dash_indexes) = [];
-start_train_date = str2double(string(start_train_date_chars));
+start_train_date_number = str2double(string(start_train_date_chars));
 
 % Convert training end date string to number
 end_train_date_chars = char(end_train_date_str);
+end_train_date = datetime(str2double(end_train_date_chars(1:4)), str2double(end_train_date_chars(6:7)), str2double(end_train_date_chars(9:10)));
 dash_indexes = end_train_date_chars == '-';
 end_train_date_chars(dash_indexes) = [];
-end_train_date = str2double(string(end_train_date_chars));
+end_train_date_number = str2double(string(end_train_date_chars));
 
 % Convert end of prediction/prescription date string to number
 end_predict_presscribe_date_chars = char(end_predict_presscribe_date_str);
+end_predict_date = datetime(str2double(end_predict_presscribe_date_chars(1:4)), str2double(end_predict_presscribe_date_chars(6:7)), str2double(end_predict_presscribe_date_chars(9:10)));
 dash_indexes = end_predict_presscribe_date_chars == '-';
 end_predict_presscribe_date_chars(dash_indexes) = [];
-end_predict_presscribe_date = str2double(string(end_predict_presscribe_date_chars));
+end_predict_presscribe_date_number = str2double(string(end_predict_presscribe_date_chars));
 
-% Assess: start_train_date <= end_train_date <= end_predict_presscribe_date
-if(~(start_train_date <= end_train_date && end_train_date <= end_predict_presscribe_date))
+% find the number of days for forecasting
+dates = [start_train_date, end_train_date, end_predict_date];
+num_forecast_days = split(between(dates(2), dates(3), 'days'), 'd');
+
+% Assess: start_train_date_number <= end_train_date_number <= end_predict_presscribe_date_number
+if(~(start_train_date_number <= end_train_date_number && end_train_date_number <= end_predict_presscribe_date_number))
     error('Invalid input times order.');
 end
 
@@ -69,10 +82,10 @@ NumNPI = length(included_IP); % Number of NPI
 TrainedModelParams = [{'CountryName'}, {'RegionName'}, {'N_population'}, {'coef0'}, {'coef'}, {'coef0_2'}, {'coef_2'}];
 
 for k = 1 : NumGeoLocations
-    if(find(SelectedGeoIDs == CountryAndRegionList(k))) % make sure the current country/region is among the ones to be processed
+    if(~isempty(find(SelectedGeoIDs == CountryAndRegionList(k), 1)))% && isequal(CountryAndRegionList(k), "China ")) % make sure the current country/region is among the ones to be processed
         % 1) READ AND CLEAN THE DATA
         disp([num2str(k) '- ' char(CountryAndRegionList(k))]);
-        geoid_all_row_indexes = AllGeoIDs == CountryAndRegionList(k) & all_data.Date >= start_train_date & all_data.Date <= end_train_date; % fetch all rows corresponding to the country/region from start date to end date
+        geoid_all_row_indexes = AllGeoIDs == CountryAndRegionList(k) & all_data.Date >= start_train_date_number & all_data.Date <= end_train_date_number; % fetch all rows corresponding to the country/region from start date to end date
         CountryName = all_data.CountryName(find(geoid_all_row_indexes == 1, 1, 'first')); % The current country name
         RegionName = all_data.RegionName(find(geoid_all_row_indexes == 1, 1, 'first')); % The current region name
         ConfirmedCases = all_data.ConfirmedCases(geoid_all_row_indexes); % Confirmed cases
@@ -120,6 +133,7 @@ for k = 1 : NumGeoLocations
         
         % A smooth version of the confirmed cases time series
         ConfirmedCasesSmoothed = cumsum(NewCasesSmoothed);
+        ConfirmedCasesSmoothedZeroLag = cumsum(NewCasesSmoothedZeroLag);
         ConfirmedCasesSmoothedNormalized = ConfirmedCasesSmoothed / N_population; % the fraction of total cases
         
         % Calculate the number of new deaths
@@ -149,8 +163,12 @@ for k = 1 : NumGeoLocations
         params.b = 0; % input influence bias constant (zero in the first round)
         params.u_min = NPI_MINS(:); % minimum input values
         params.u_max = NPI_MAXES(:); % maximum input values according to the OXFORD dataset
-        params.alpha_min = 0.0; % minimum alpha
-        params.alpha_max = inf; % maximum alpha
+        params.s_min = min_cases/N_population; % minimum s
+        params.i_min = min_cases/N_population; % minimum i
+        
+        params.alpha_min = 1e-8; % minimum alpha
+        params.alpha_max = 100; % maximum alpha
+        
         params.epsilon = nan; % No NPI costs during the first round
         params.gamma = 1/(params.dt * model_gamma_param); % input to contact influence rate (inverse time)
         params.obs_type = observation_type;
@@ -172,17 +190,19 @@ for k = 1 : NumGeoLocations
         w_bar = zeros(3, 1); % mean value of process noises
         v_bar = 0; % mean value of observation noise
         s_init = [(N_population - I0)/N_population ; I0/N_population ; alpha0]; % initial state vector
-        % Ps_init = 100.0*(params.dt)^2*diag([I0/N_population, I0/N_population, alpha_noise_std].^2); % Covariance matrix of initial states
-        Ps_init = 100.0*(params.dt)^2*diag([s_noise_std, i_noise_std, alpha_noise_std].^2); % Covariance matrix of initial states
+        %         Ps_init = 100.0*(params.dt)^2*diag([I0/N_population, I0/N_population, alpha_noise_std].^2); % Covariance matrix of initial states
+        Ps_init = (params.dt)^2*diag([10*s_noise_std, 10*i_noise_std, 10*alpha_noise_std].^2); % Covariance matrix of initial states
         s_final = nan(3, 1); % Set the finite horizon end points (not required during first round)
         Ps_final = nan(3); % Set the finite horizon end points (not required during first round)
-        R_v = var((NewCasesSmoothedZeroLag - NewCasesRefined)/N_population); % Observation noise variance
         if(isequal(params.obs_type, 'TOTALCASES'))
             observations = ConfirmedCasesSmoothedNormalized(:)';
         elseif(isequal(params.obs_type, 'NEWCASES'))
             observations = NewCasesSmoothedNormalized(:)';
+            %             R_v = var((NewCasesSmoothedZeroLag - NewCasesRefined)/N_population); % Observation noise variance estimate
+            R_v = 0.1 * ((NewCasesSmoothedZeroLag' - NewCasesRefined')/N_population).^2; % Observation noise variance estimate
+            %             R_v = BaseLine1(((NewCasesSmoothedZeroLag' - NewCasesRefined')/N_population).^2, SmoothingWinLen, 'mn'); % Observation noise variance estimate
         end
-        [~, ~, S_MINUS_round1_noinput, S_PLUS_round1_noinput, S_SMOOTH_round1_noinput, P_MINUS, P_PLUS_round1_noinput, P_SMOOTH_round1_noinput, ~, ~, rho_round1_noinput] = SIAlphaModelEKF(control_input, observations, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
+        [~, ~, S_MINUS_round1_noinput, S_PLUS_round1_noinput, S_SMOOTH_round1_noinput, P_MINUS_round1_noinput, P_PLUS_round1_noinput, P_SMOOTH_round1_noinput, ~, ~, rho_round1_noinput] = SIAlphaModelEKF(control_input, observations, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
         
         % 3) APPLY LASSO OVER ALPHA ESTIMATE TO FIND INITIAL LINEAR REGRESSION MODEL PARAMS
         x_data_train = NPI_MAXES(:, ones(NumNPIdays, 1))' - InterventionPlans;
@@ -200,7 +220,7 @@ for k = 1 : NumGeoLocations
         y_pred_lasso = x_data_train * coef + coef0;
         %     axTrace = lassoPlot(B_LASSO, FitInfo);
         
-        % 4) APPLY THE SECOND ROUND EKF TO REFINE ALPHA BASED ON REAL HISTORIC NPI INPUTS
+        % 4) APPLY THE SECOND ROUND TRI-STATE EKF TO REFINE ALPHA BASED ON REAL HISTORIC NPI INPUTS
         params.a = coef; % input influence weight vector
         params.b = coef0; % input influence bias constant
         control_input = InterventionPlans'; % The second round works with real inputs
@@ -231,14 +251,14 @@ for k = 1 : NumGeoLocations
         %         axTrace2 = lassoPlot(B_LASSO2, FitInfo2);
         
         % 6) FORECAST/PRESCRIPTION PHASE
-        num_forecast_days = end_predict_presscribe_date - end_train_date;
         if(num_forecast_days > 0)
             params.a = coef_2; % input influence weight vector
             params.b = coef0_2; % input influence bias constant
             
-            % A) Forecast/prescription phase with zero input
+            % A) Forecast/prescription phase with zero input (3-state EKF)
             IP = InterventionPlans';
             control_input = [IP, NPI_MINS(:, ones(1, num_forecast_days))]; % The second round works with real inputs
+            R_v = cat(2, R_v, ones(1, num_forecast_days) * mean(R_v)); % Fill in the R_v matrix with the average variance
             %s_init = [(N_population - I0)/N_population ; I0/N_population ; S_SMOOTH_round1_noinput(3, 1) ; S_SMOOTH_round1_noinput(4, 1) ; S_SMOOTH_round1_noinput(5, 1) ; S_SMOOTH_round1_noinput(6, 1)]; % initial state vector
             if(isequal(params.obs_type, 'TOTALCASES'))
                 observations = [ConfirmedCasesSmoothedNormalized(:)', nan(1, num_forecast_days)];
@@ -247,7 +267,7 @@ for k = 1 : NumGeoLocations
             end
             [zero_control_input, ~, S_MINUS_zeroinput, S_PLUS_zeroinput, S_SMOOTH_zeroinput, P_MINUS_zeroinput, P_PLUS_zeroinput, P_SMOOTH_zeroinput, ~, ~, rho_zeroinput] = SIAlphaModelEKF(control_input, observations, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, 1);
             
-            % B) Forecast/prescription phase with fixed input
+            % B) Forecast/prescription phase with fixed input (3-state EKF)
             IP = InterventionPlans';
             IP_last = IP(:, end);
             control_input = [IP, IP_last(:, ones(1, num_forecast_days))]; % The second round works with real inputs
@@ -259,7 +279,7 @@ for k = 1 : NumGeoLocations
             end
             [fixed_control_input, ~, S_MINUS_fixedinput, S_PLUS_fixedinput, S_SMOOTH_fixedinput, P_MINUS_fixedinput, P_PLUS_fixedinput, P_SMOOTH_fixedinput, ~, ~, rho_fixedinput] = SIAlphaModelEKF(control_input, observations, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, 1);
             
-            % C) Forecast/prescription phase with optimal input
+            % C) Forecast/prescription phase with optimal input (6-state EKF)
             num_pareto_front_points = length(human_npi_cost_factor);
             J0_opt_control = zeros(1, num_pareto_front_points);
             J1_opt_control = zeros(1, num_pareto_front_points);
@@ -312,8 +332,35 @@ for k = 1 : NumGeoLocations
                 % Use the EKF estimates
                 %         [J0_opt_control(ll), J1_opt_control(ll)] = NPICost(squeeze(S_SMOOTH(1, :, ll).*S_SMOOTH(2, :, ll).*S_SMOOTH(3, :, ll)), u_opt_control, npi_weights_day_wise);
                 [J0_opt_control(ll), J1_opt_control(ll)] = NPICost(s_opt_control.*i_opt_control.*alpha_opt_control, opt_control_input_smooth, npi_weights_day_wise);
+            end
+            
+            % D) Generate random control scenario
+            num_random_input_monte_carlo_runs = 500;
+            J0 = zeros(1, num_random_input_monte_carlo_runs);
+            J1 = zeros(1, num_random_input_monte_carlo_runs);
+            for scenario = 1 : num_random_input_monte_carlo_runs
+                u = zeros(NumNPI, num_forecast_days);
+                for jj = 1 : NumNPI
+                    if(scenario < num_random_input_monte_carlo_runs/2) % random over NPI, constant over time
+                        u(jj, :) = randi([NPI_MINS(jj), NPI_MAXES(jj)]);
+                    else
+                        for t = 1 : num_forecast_days % random over NPI and time
+                            u(jj, t) = randi([NPI_MINS(jj), NPI_MAXES(jj)]);
+                        end
+                    end
+                end
+                %         u = u + 0.1*rand(size(u)); % add noise to input
+                [s_controlled, i_controlled, alpha_controlled] = SIalpha_Controlled(u, s_historic(end), i_historic(end), alpha_historic(end), NPI_MAXES, params.alpha_min, params.alpha_max, params.gamma, params.a, params.b, params.beta, s_noise_std, i_noise_std, alpha_noise_std, num_forecast_days, params.dt);
+                
+                s = [s_historic, s_controlled];
+                i = [i_historic, i_controlled];
+                alpha = [alpha_historic, alpha_controlled];
+                u = cat(2, IP, u);
+                
+                [J0(scenario), J1(scenario)] = NPICost(s.*i.*alpha, u, npi_weights_day_wise);
                 
             end
+            
         end
         
         %         MedFatalityRate = median(FatalityRate);
@@ -325,17 +372,20 @@ for k = 1 : NumGeoLocations
         %         BetaEstimate = DeathToCumInfectionsRatio/MedRecentFatalityRate;
         %         MedRecentBetaEstimate = median(BetaEstimate(round(0.75*end) : end));
         
-        %         TableData = cat(2, TableData, [ThisCountryName; ThisRegionName; num2cell(coef0); num2cell(coef(:))]);
-        %         Age = [38;43;38;40;49];
-        %         Smoker = logical([1;0;1;0;1]);
-        %         Height = [71;69;64;67;64];
-        %         Weight = [176;163;131;133;119];
-        %         BloodPressure = [124 93; 109 77; 125 83; 117 75; 122 80];
-        %
-        %
-        %         OutTable = table
-        
         if(plot_results)
+            
+            figure
+            title([CountryName , ' ', RegionName]);
+            for mm = 1 : 3
+                subplot(3, 1, mm);
+                errorbar(S_MINUS_round1_noinput(mm, :), sqrt(squeeze(P_MINUS_round1_noinput(mm, mm, :))));
+                hold on
+                errorbar(S_PLUS_round1_noinput(mm, :), sqrt(squeeze(P_PLUS_round1_noinput(mm, mm, :))));
+                errorbar(S_SMOOTH_round1_noinput(mm, :), sqrt(squeeze(P_SMOOTH_round1_noinput(mm, mm, :))));
+                legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
+                grid
+            end
+            
             figure
             subplot(211);
             plot(N_population * S_PLUS_zeroinput(1, :).*S_PLUS_zeroinput(2, :).*S_PLUS_zeroinput(3, :));
@@ -432,7 +482,7 @@ for k = 1 : NumGeoLocations
             
             figure
             subplot(311);
-            errorbar(N_population*S_MINUS_round1_noinput(1, :), N_population*sqrt(squeeze(P_MINUS(1, 1, :))));
+            errorbar(N_population*S_MINUS_round1_noinput(1, :), N_population*sqrt(squeeze(P_MINUS_round1_noinput(1, 1, :))));
             hold on
             errorbar(N_population*S_PLUS_round1_noinput(1, :), N_population*sqrt(squeeze(P_PLUS_round1_noinput(1, 1, :))));
             errorbar(N_population*S_SMOOTH_round1_noinput(1, :), N_population*sqrt(squeeze(P_SMOOTH_round1_noinput(1, 1, :))));
@@ -446,7 +496,7 @@ for k = 1 : NumGeoLocations
             title(CountryAndRegionList(k), 'interpreter', 'none');
             grid
             subplot(312);
-            errorbar(N_population*S_MINUS_round1_noinput(2, :), N_population*sqrt(squeeze(P_MINUS(2, 2, :))));
+            errorbar(N_population*S_MINUS_round1_noinput(2, :), N_population*sqrt(squeeze(P_MINUS_round1_noinput(2, 2, :))));
             hold on
             errorbar(N_population*S_PLUS_round1_noinput(2, :), N_population*sqrt(squeeze(P_PLUS_round1_noinput(2, 2, :))));
             errorbar(N_population*S_SMOOTH_round1_noinput(2, :), N_population*sqrt(squeeze(P_SMOOTH_round1_noinput(2, 2, :))));
@@ -462,7 +512,7 @@ for k = 1 : NumGeoLocations
             title(CountryAndRegionList(k), 'interpreter', 'none');
             grid
             subplot(313);
-            errorbar(S_MINUS_round1_noinput(3, :), sqrt(squeeze(P_MINUS(3, 3, :))));
+            errorbar(S_MINUS_round1_noinput(3, :), sqrt(squeeze(P_MINUS_round1_noinput(3, 3, :))));
             hold on
             errorbar(S_PLUS_round1_noinput(3, :), sqrt(squeeze(P_PLUS_round1_noinput(3, 3, :))));
             errorbar(S_SMOOTH_round1_noinput(3, :), sqrt(squeeze(P_SMOOTH_round1_noinput(3, 3, :))));
@@ -477,10 +527,10 @@ for k = 1 : NumGeoLocations
             grid
             
             figure
-            %     plot(log(J0), log(J1), 'bo');
-            plot(J0_opt_control, J1_opt_control, 'ro');
             hold on
-            %             plot(J0, J1, 'bo');
+            %     plot(log(J0 * N_population), log(J1), 'bo');
+            plot(J0 * N_population, J1, 'bo');
+            plot(J0_opt_control * N_population, J1_opt_control, 'ro');
             grid
             %     plot(log(J0_zero_control), log(J1_zero_control), 'kx', 'MarkerSize',12);
             %     plot(log(J0_full_control), log(J1_full_control), 'gx', 'MarkerSize',12);
@@ -490,11 +540,14 @@ for k = 1 : NumGeoLocations
             %     axis square
             xlabel('Human factor');
             ylabel('NPI cost');
+            axis tight
             axis square
+            set(gca, 'fontsize', 16)
+            set(gca, 'box', 'on')
             
             % % %         figure
             % % %         subplot(311);
-            % % %         errorbar(S_MINUS_round1_noinput(4, :), sqrt(squeeze(P_MINUS(4, 4, :))));
+            % % %         errorbar(S_MINUS_round1_noinput(4, :), sqrt(squeeze(P_MINUS_round1_noinput(4, 4, :))));
             % % %         hold on
             % % %         errorbar(S_PLUS_round1_noinput(4, :), sqrt(squeeze(P_PLUS_round1_noinput(4, 4, :))));
             % % %         errorbar(S_SMOOTH_round1_noinput(4, :), sqrt(squeeze(P_SMOOTH_round1_noinput(4, 4, :))));
@@ -505,7 +558,7 @@ for k = 1 : NumGeoLocations
             % % %         title(CountryAndRegionList(k), 'interpreter', 'none');
             % % %         grid
             % % %         subplot(312);
-            % % %         errorbar(S_MINUS_round1_noinput(5, :), sqrt(squeeze(P_MINUS(5, 5, :))));
+            % % %         errorbar(S_MINUS_round1_noinput(5, :), sqrt(squeeze(P_MINUS_round1_noinput(5, 5, :))));
             % % %         hold on
             % % %         errorbar(S_PLUS_round1_noinput(5, :), sqrt(squeeze(P_PLUS_round1_noinput(5, 5, :))));
             % % %         errorbar(S_SMOOTH_round1_noinput(5, :),sqrt(squeeze(P_SMOOTH_round1_noinput(5, 5, :))));
@@ -516,7 +569,7 @@ for k = 1 : NumGeoLocations
             % % %         title(CountryAndRegionList(k), 'interpreter', 'none');
             % % %         grid
             % % %         subplot(313);
-            % % %         errorbar(S_MINUS_round1_noinput(6, :), sqrt(squeeze(P_MINUS(6, 6, :))));
+            % % %         errorbar(S_MINUS_round1_noinput(6, :), sqrt(squeeze(P_MINUS_round1_noinput(6, 6, :))));
             % % %         hold on
             % % %         errorbar(S_PLUS_round1_noinput(6, :), sqrt(squeeze(P_PLUS_round1_noinput(6, 6, :))));
             % % %         errorbar(S_SMOOTH_round1_noinput(6, :), sqrt(squeeze(P_SMOOTH_round1_noinput(6, 6, :))));
@@ -532,7 +585,7 @@ for k = 1 : NumGeoLocations
             
             
             %             pause(2)
-            input('Press enter/return to process next country/region.');
+            %             input('Press enter/return to process next country/region.');
             close all
         end
         

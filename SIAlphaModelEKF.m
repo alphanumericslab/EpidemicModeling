@@ -25,8 +25,8 @@ end
 
 % Hard margins on state vectors
 function s_k = StateHardMargins(s_k, params)
-s_k(1) = min(1.0, max(0, s_k(1)));
-s_k(2) = min(1.0, max(0, s_k(2)));
+s_k(1) = min(1.0, max(params.s_min, s_k(1)));
+s_k(2) = min(1.0, max(params.i_min, s_k(2)));
 s_k(3) = min(params.alpha_max, max(params.alpha_min, s_k(3)));
 end
 
@@ -41,8 +41,8 @@ function [u, s_k_plus_one] = NlinStateUpdate(u, s_k, w_bar, params)
 s_k_plus_one = zeros(3, 1);
 
 % State equations
-s_k_plus_one(1) = max(0.0, min(1.0, s_k(1) - params.dt * s_k(3) * s_k(1) * s_k(2)));
-s_k_plus_one(2) = max(0.0, min(1.0, s_k(2) + params.dt * (s_k(3) * s_k(1) * s_k(2) - params.beta * s_k(2))));
+s_k_plus_one(1) = max(params.s_min, min(1.0, s_k(1) - params.dt * s_k(3) * s_k(1) * s_k(2)));
+s_k_plus_one(2) = max(params.i_min, min(1.0, s_k(2) + params.dt * (s_k(3) * s_k(1) * s_k(2) - params.beta * s_k(2))));
 s_k_plus_one(3) = max(params.alpha_min, min(params.alpha_max, s_k(3) + params.dt * (-params.gamma * s_k(3) + params.gamma * params.b + params.gamma * params.a'*(params.u_max - u))));
 
 end

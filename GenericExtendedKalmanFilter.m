@@ -1,7 +1,9 @@
 function [u_opt, u_opt_smooth, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMOOTH, K_GAIN, innovations, rho] = GenericExtendedKalmanFilter(u, x, handles, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta, gamma, inv_monitor_len, order)
 % A generic Extended Kalman Filter (EKF) and fixed-interval Extended Kalman Smoother (EKS)
 %
-%
+% (C) Reza Sameni, 2021
+% reza.sameni@gmail.com
+% https://github.com/alphanumericslab/EpidemicModeling
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % The system equation templates to be passed as input arguments
@@ -57,8 +59,36 @@ InnovationsCov = zeros(n, n, inv_monitor_len);
 % Initialization
 sk_minus = s_init(:);
 Pk_minus = Ps_init;
-Q = Q_w;
-R = R_v;
+
+% Q can be a fixed matrix or time-variant
+if(size(Q_w, 1) == size(Q_w, 2)) % scalar or matrix process noise with fixed Q
+    Q = repmat(Q_w, 1, 1, T);
+%     fixed_Q = true;
+elseif(isvector(Q_w) && length(Q_w) == T) % scalar process noise with variable Q
+    Q = zeros(1, 1, T);
+    Q(1, 1, :) = Q_w;
+%     fixed_Q = false;
+elseif(size(Q_w, 1) == size(Q_w, 2) && size(Q_w, 3) == T)  % scalar process noise with variable Q
+    Q = Q_w;
+%     fixed_Q = false;
+else
+    error('Process noise covariance noise mismatch');
+end
+
+% R can be a fixed matrix or time-variant
+if(size(R_v, 1) == size(R_v, 2)) % scalar or matrix observations with fixed R
+    R = repmat(R_v, 1, 1, T);
+    fixed_R = true;
+elseif(isvector(R_v) && length(R_v) == T) % scalar observations with variable R
+    R = zeros(1, 1, T);
+    R(1, 1, :) = R_v;
+    fixed_R = false;
+elseif(size(R_v, 1) == size(R_v, 2) && size(R_v, 3) == T)  % scalar observations with variable R
+    R = R_v;
+    fixed_R = false;
+else
+    error('Observation noise covariance noise mismatch');
+end
 
 % equal to control input whenever available, otherwise equal to optimal control
 u_opt = zeros(size(u));
@@ -91,7 +121,7 @@ for k = 1 : T
     % time update if observation is valid
     if(~isnan(x(:, k)))
         innovations(:, k) = x(:, k) - xk_minus;
-        Kgain = Pk_minus * Ck_minus' / (Ck_minus * Pk_minus * Ck_minus' + gamma * (Dk_minus * R * Dk_minus') + Gsp + Gvp); % Kalman gain
+        Kgain = Pk_minus * Ck_minus' / (Ck_minus * Pk_minus * Ck_minus' + gamma * (Dk_minus * R(:, :, k) * Dk_minus') + Gsp + Gvp); % Kalman gain
         Pk_plus = (eye(m) - Kgain * Ck_minus) * Pk_minus / gamma;
         sk_plus = sk_minus + Kgain * innovations(:, k);                 % As posteriori state estimate
     else
@@ -119,7 +149,7 @@ for k = 1 : T
     [u_opt(:, k), sk_minus] = handles.NlinStateUpdate(u(:, k), sk_plus, w_bar, params); % State update
     sk_minus = sk_minus + fs + fw; % Add second order terms (is available)
     [Ak_plus, Bk_plus] = handles.StateJacobians(u(:, k), sk_plus, w_bar, params);
-    Pk_minus = (Ak_plus * Pk_plus * Ak_plus') + (Bk_plus * Q * Bk_plus') + Fsp + Fwp; % Cov. matrix update
+    Pk_minus = (Ak_plus * Pk_plus * Ak_plus') + (Bk_plus * Q(:, :, k) * Bk_plus') + Fsp + Fwp; % Cov. matrix update
     
     % Apply hard margins on states
     sk_minus = handles.StateHardMargins(sk_minus, params);
@@ -138,7 +168,7 @@ for k = 1 : T
     InnovationsCov = cat(3, cc, InnovationsCov(:, :, 1 : inv_monitor_len - 1));
     InnovationsCovNormalized = cat(3, cc / R, InnovationsCovNormalized(:, :, 1 : inv_monitor_len - 1));
     rho(:, :, k) = sum(InnovationsCovNormalized, 3) / stats_counter;
-    if(~isequal(beta, 1) && ~isnan(x(:, k)))
+    if(~isequal(beta, 1) && ~isnan(x(:, k)) && fixed_R == true)
         R = beta * R + (1 - beta) * sum(InnovationsCov, 3) / stats_counter;
     end
 end
@@ -164,15 +194,24 @@ end
 for k = T - 1 : -1 : 1
     sk_plus = S_PLUS(:, k);
     Ak_plus = handles.StateJacobians(u(:, k), sk_plus, w_bar, params);
-    %     J = (P_PLUS(:, :, k) * Ak_plus') / (P_MINUS(:, :, k + 1));
-    J = (P_PLUS(:, :, k) * Ak_plus') * pinv(P_MINUS(:, :, k + 1));
+    
+    % Check to make sure that P_MINUS is not ill-conditioned 
+    pmns = P_MINUS(:, :, k + 1);
+    %     rcnd = rcond(pmns);
+    if(sum(isnan(pmns(:))) > 0 || sum(isinf(pmns(:))) > 0)% || rcond(pmns) < 2.0*eps)
+        %     if(rcnd < eps || isnan(rcnd) )% || rcond(pmns) < 2.0*eps)
+        J = zeros(m);
+    else
+        J = (P_PLUS(:, :, k) * Ak_plus') * pinv(P_MINUS(:, :, k + 1));
+        %         J = (P_PLUS(:, :, k) * Ak_plus') / (P_MINUS(:, :, k + 1));
+    end
     S_SMOOTH(:, k) = S_PLUS(:, k) + J * (S_SMOOTH(:, k + 1) - S_MINUS(:, k + 1));
     
     % Apply hard margins on states
     S_SMOOTH(:, k) = handles.StateHardMargins(S_SMOOTH(:, k), params);
     
     P_SMOOTH(:, :, k) = P_PLUS(:, :, k) - J * (P_MINUS(:, :, k+1) - P_SMOOTH(:, :, k+1)) * J';
-
+    
     % rerun the state equation for the optimal input
     [u_opt_smooth(:, k), ~] = handles.NlinStateUpdate(u(:, k), S_SMOOTH(:, k), w_bar, params);
 end
