@@ -122,8 +122,11 @@ for k = 1 : T
     if(~isnan(x(:, k)))
         innovations(:, k) = x(:, k) - xk_minus;
         Kgain = Pk_minus * Ck_minus' / (Ck_minus * Pk_minus * Ck_minus' + gamma * (Dk_minus * R(:, :, k) * Dk_minus') + Gsp + Gvp); % Kalman gain
-        Pk_plus = (eye(m) - Kgain * Ck_minus) * Pk_minus / gamma;
-        sk_plus = sk_minus + Kgain * innovations(:, k);                 % As posteriori state estimate
+
+        %         Pk_plus = (eye(m) - Kgain * Ck_minus) * Pk_minus / gamma;
+        Pk_plus = ((eye(m) - Kgain * Ck_minus) * Pk_minus * (eye(m) - Kgain * Ck_minus)' + Kgain * (Dk_minus * R(:, :, k) * Dk_minus') * Kgain' )/ gamma; % Stabilized Kalman cov. matrix
+        
+        sk_plus = sk_minus + Kgain * innovations(:, k); % As posteriori state estimate
     else
         innovations(:, k) = 0;
         Kgain = zeros(m, n); % Kalman gain
@@ -131,6 +134,9 @@ for k = 1 : T
         sk_plus = sk_minus; % As posteriori state estimate
     end
     
+    % Trivial condition added to guarantee numerical stability
+    Pk_plus = (Pk_plus + Pk_plus')/2.0;
+
     % Apply hard margins on states
     sk_plus = handles.StateHardMargins(sk_plus, params);
     
@@ -150,6 +156,9 @@ for k = 1 : T
     sk_minus = sk_minus + fs + fw; % Add second order terms (is available)
     [Ak_plus, Bk_plus] = handles.StateJacobians(u(:, k), sk_plus, w_bar, params);
     Pk_minus = (Ak_plus * Pk_plus * Ak_plus') + (Bk_plus * Q(:, :, k) * Bk_plus') + Fsp + Fwp; % Cov. matrix update
+    
+    % Trivial condition added to guarantee numerical stability
+    Pk_minus = (Pk_minus + Pk_minus')/2.0;
     
     % Apply hard margins on states
     sk_minus = handles.StateHardMargins(sk_minus, params);
@@ -211,6 +220,9 @@ for k = T - 1 : -1 : 1
     S_SMOOTH(:, k) = handles.StateHardMargins(S_SMOOTH(:, k), params);
     
     P_SMOOTH(:, :, k) = P_PLUS(:, :, k) - J * (P_MINUS(:, :, k+1) - P_SMOOTH(:, :, k+1)) * J';
+    
+    % Trivial condition added to guarantee numerical stability
+    P_SMOOTH(:, :, k) = (P_SMOOTH(:, :, k) + P_SMOOTH(:, :, k)')/2.0;
     
     % rerun the state equation for the optimal input
     [u_opt_smooth(:, k), ~] = handles.NlinStateUpdate(u(:, k), S_SMOOTH(:, k), w_bar, params);

@@ -1,4 +1,4 @@
-function TrainPredictPrescribeNPI(npi_weights, human_npi_cost_factor, start_train_date_str, end_train_date_str, end_predict_presscribe_date_str, data_file, geo_file, populations_file, included_IP, NPI_MINS, NPI_MAXES, trained_model_params_file)
+function TrainPredictPrescribeNPI(npi_weights, human_npi_cost_factor, start_train_date_str, end_train_date_str, start_regression_date_str, end_predict_presscribe_date_str, data_file, geo_file, populations_file, included_IP, NPI_MINS, NPI_MAXES, trained_model_params_file)
 
 % A function for the prediction and prescription algorithm developed for the XPRIZE
 % Pandemic Response Challenge
@@ -18,7 +18,8 @@ observation_type = 'NEWCASES'; % TOTALCASES or NEWCASES
 num_days_for_beta_calculation = 21;
 prob_contagion_after_Tdays = 0.01;
 R0 = 2.5; % An assumption during outbreak (https://doi.org/10.1016/S1473-3099(20)30484-9)
-REGRESSION_TYPE = 'NONNEGATIVELS'; % 'LASSO' or 'NONNEGATIVELS'
+REGRESSION_TYPE = 'NONNEGATIVELS'; % 'LASSO'/'NONNEGATIVELS'/'NONNEGATIVELS-ELEMENT-WISE'
+NONNEGATIVELS_IRERATIONS = 100;
 
 % Convert training start date string to number
 start_train_date_chars = char(start_train_date_str);
@@ -34,6 +35,13 @@ dash_indexes = end_train_date_chars == '-';
 end_train_date_chars(dash_indexes) = [];
 end_train_date_number = str2double(string(end_train_date_chars));
 
+% Convert LASSO/LSTM/... regression start date string to number
+start_regression_date_chars = char(start_regression_date_str);
+start_regression_date = datetime(str2double(start_regression_date_chars(1:4)), str2double(start_regression_date_chars(6:7)), str2double(start_regression_date_chars(9:10)));
+% dash_indexes = start_regression_date_chars == '-';
+% start_regression_date_chars(dash_indexes) = [];
+% start_regression_date_number = str2double(string(start_regression_date_chars));
+
 % Convert end of prediction/prescription date string to number
 end_predict_presscribe_date_chars = char(end_predict_presscribe_date_str);
 end_predict_date = datetime(str2double(end_predict_presscribe_date_chars(1:4)), str2double(end_predict_presscribe_date_chars(6:7)), str2double(end_predict_presscribe_date_chars(9:10)));
@@ -42,8 +50,9 @@ end_predict_presscribe_date_chars(dash_indexes) = [];
 end_predict_presscribe_date_number = str2double(string(end_predict_presscribe_date_chars));
 
 % find the number of days for forecasting
-dates = [start_train_date, end_train_date, end_predict_date];
-num_forecast_days = split(between(dates(2), dates(3), 'days'), 'd');
+dates = [start_train_date, start_regression_date, end_train_date, end_predict_date];
+num_forecast_days = split(between(dates(3), dates(4), 'days'), 'd');
+num_regression_days = split(between(dates(2), dates(3), 'days'), 'd');
 
 % Assess: start_train_date_number <= end_train_date_number <= end_predict_presscribe_date_number
 if(~(start_train_date_number <= end_train_date_number && end_train_date_number <= end_predict_presscribe_date_number))
@@ -79,7 +88,7 @@ NumGeoLocations = length(CountryAndRegionList); % Number of country-region pairs
 
 NumNPI = length(included_IP); % Number of NPI
 
-TrainedModelParams = [{'CountryName'}, {'RegionName'}, {'N_population'}, {'coef0'}, {'coef'}, {'coef0_2'}, {'coef_2'}];
+TrainedModelParams = [{'CountryName'}, {'RegionName'}, {'N_population'}, {'reg_coef_b'}, {'reg_coef_a'}, {'reg_coef_b2'}, {'reg_coef_a2'}];
 
 for k = 1 : NumGeoLocations
     if(~isempty(find(SelectedGeoIDs == CountryAndRegionList(k), 1)))% && isequal(CountryAndRegionList(k), "China ")) % make sure the current country/region is among the ones to be processed
@@ -209,20 +218,49 @@ for k = 1 : NumGeoLocations
         y_data_train = S_SMOOTH_round1_noinput(3, :)'; % alpha
         % y_data_train = S_PLUS_round1_noinput(3, :)'; % alpha
         if(isequal(REGRESSION_TYPE, 'LASSO'))
-            [B_LASSO, FitInfo] = lasso(x_data_train, y_data_train, 'CV',10);
-            idxLambda1SE = FitInfo.Index1SE;
-            coef = B_LASSO(:, idxLambda1SE);
-            coef0 = FitInfo.Intercept(idxLambda1SE);
+            [B_LASSO, FitInfo] = lasso(x_data_train(end-num_regression_days+1:end, :), y_data_train(end-num_regression_days+1:end), 'CV',50);
+            lassoPlot(B_LASSO,FitInfo,'PlotType','CV');
+            legend('show') % Show legend
+            % idxLambda1SE = FitInfo.Index1SE;
+            idxLambda1 = FitInfo.IndexMinMSE;
+            reg_coef_a = B_LASSO(:, idxLambda1);
+            %             reg_coef_a(reg_coef_a < 0) = 0;
+            reg_coef_b = FitInfo.Intercept(idxLambda1);
         elseif(isequal(REGRESSION_TYPE, 'NONNEGATIVELS'))
-            coef = lsqnonneg(x_data_train, y_data_train);
-            coef0 = 0;
+            reg_coef_a = lsqnonneg(x_data_train(end-num_regression_days+1:end, :), y_data_train(end-num_regression_days+1:end));
+            reg_coef_b = 0;
+            min_err = sum((y_data_train(end-num_regression_days+1:end) - x_data_train(end-num_regression_days+1:end, :) * reg_coef_a).^2);
+            for jj = 1 : NONNEGATIVELS_IRERATIONS
+                coef_temp = lsqnonneg(x_data_train(end-num_regression_days+1:end, :), y_data_train(end-num_regression_days+1:end) - reg_coef_b);
+                coef0_temp = mean(y_data_train(end-num_regression_days+1:end) - x_data_train(end-num_regression_days+1:end, :) * reg_coef_a);
+                error_temp = sum((y_data_train(end-num_regression_days+1:end) - x_data_train(end-num_regression_days+1:end, :) * reg_coef_a - coef0_temp).^2);
+                if(error_temp < min_err)
+                    reg_coef_a = coef_temp;
+                    reg_coef_b = coef0_temp;
+                    min_err = error_temp;
+                else
+                    break;
+                end
+            end
+        elseif(isequal(REGRESSION_TYPE, 'NONNEGATIVELS-ELEMENT-WISE'))
+            % Affine
+            S = fitoptions('Method', 'NonlinearLeastSquares', 'Robust', 'on', 'Lower', [0, -inf], 'Upper', [inf, inf], 'MaxIter', 10000, 'Startpoint', [0, 0]);
+            f = fittype('a * x + b', 'options', S);
+            %             % Quadratic
+            %             S = fitoptions('Method', 'NonlinearLeastSquares', 'Robust', 'on', 'Lower', [0, 0, -inf], 'Upper', [inf, inf, inf], 'MaxIter', 10000, 'Startpoint', [0, 0, 0]);
+            %             f = fittype('a*x^2 + b * x + c', 'options', S);
+            reg_coef_a = zeros(NumNPI, 1);
+            for kk = 1 : length(reg_coef_a)
+                ffit = fit(x_data_train(end-num_regression_days+1:end, kk), y_data_train(end-num_regression_days+1:end), f);
+                reg_coef_a(kk) = ffit.a;
+            end
+            reg_coef_b = mean(y_data_train(end-num_regression_days+1:end) - x_data_train(end-num_regression_days+1:end, :) * reg_coef_a);
         end
-        y_pred_lasso = x_data_train * coef + coef0;
-        %     axTrace = lassoPlot(B_LASSO, FitInfo);
+        y_pred_lasso = x_data_train * reg_coef_a + reg_coef_b;
         
         % 4) APPLY THE SECOND ROUND TRI-STATE EKF TO REFINE ALPHA BASED ON REAL HISTORIC NPI INPUTS
-        params.a = coef; % input influence weight vector
-        params.b = coef0; % input influence bias constant
+        params.a = reg_coef_a; % input influence weight vector
+        params.b = reg_coef_b; % input influence bias constant
         control_input = InterventionPlans'; % The second round works with real inputs
         %         I0 = max(1, round(N_population * S_SMOOTH_round1_noinput(2, 1)));
         %         I0 = max(1, round(N_population * S_SMOOTH_round1_noinput(2, 1)));
@@ -239,21 +277,52 @@ for k = 1 : NumGeoLocations
         y_data_train2 = S_SMOOTH_round2_withinput(3, :)';
         %         y_data_train2 = S_PLUS_round2_withinput(3, :)';
         if(isequal(REGRESSION_TYPE, 'LASSO'))
-            [B_LASSO2, FitInfo2] = lasso(x_data_train2, y_data_train2, 'CV',10);
-            idxLambda1SE2 = FitInfo2.Index1SE;
-            coef_2 = B_LASSO2(:, idxLambda1SE2);
-            coef0_2 = FitInfo2.Intercept(idxLambda1SE2);
+            [B_LASSO2, FitInfo2] = lasso(x_data_train2(end-num_regression_days+1:end, :), y_data_train2(end-num_regression_days+1:end), 'CV',50);
+            %             idxLambda = FitInfo2.Index1SE;
+            lassoPlot(B_LASSO2,FitInfo2,'PlotType','CV');
+            legend('show') % Show legend
+            idxLambda2 = FitInfo2.IndexMinMSE;
+            reg_coef_a2 = B_LASSO2(:, idxLambda2);
+            
+            %             reg_coef_a2(reg_coef_a2 < 0) = 0;
+            
+            reg_coef_b2 = FitInfo2.Intercept(idxLambda2);
         elseif(isequal(REGRESSION_TYPE, 'NONNEGATIVELS'))
-            coef_2 = lsqnonneg(x_data_train, y_data_train);
-            coef0_2 = 0;
+            reg_coef_a2 = lsqnonneg(x_data_train2(end-num_regression_days+1:end, :), y_data_train2(end-num_regression_days+1:end));
+            reg_coef_b2 = 0;
+            min_err = sum((y_data_train2(end-num_regression_days+1:end) - x_data_train2(end-num_regression_days+1:end, :) * reg_coef_a2).^2);
+            for jj = 1 : NONNEGATIVELS_IRERATIONS
+                coef_2_temp = lsqnonneg(x_data_train2(end-num_regression_days+1:end, :), y_data_train2(end-num_regression_days+1:end) - reg_coef_b2);
+                coef0_2_temp = mean(y_data_train2(end-num_regression_days+1:end) - x_data_train2(end-num_regression_days+1:end, :) * reg_coef_a2);
+                error_temp = sum((y_data_train2(end-num_regression_days+1:end) - x_data_train2(end-num_regression_days+1:end, :) * reg_coef_a2 - coef0_2_temp).^2);
+                if(error_temp < min_err)
+                    reg_coef_a2 = coef_2_temp;
+                    reg_coef_b2 = coef0_2_temp;
+                    min_err = error_temp;
+                else
+                    break;
+                end
+            end
+        elseif(isequal(REGRESSION_TYPE, 'NONNEGATIVELS-ELEMENT-WISE'))
+            % Affine
+            S = fitoptions('Method', 'NonlinearLeastSquares', 'Robust', 'on', 'Lower', [0, -inf], 'Upper', [inf, inf], 'MaxIter', 10000, 'Startpoint', [0, 0]);
+            f = fittype('a * x + b', 'options', S);
+            %             % Quadratic
+            %             S = fitoptions('Method', 'NonlinearLeastSquares', 'Robust', 'on', 'Lower', [0, 0, -inf], 'Upper', [inf, inf, inf], 'MaxIter', 10000, 'Startpoint', [0, 0, 0]);
+            %             f = fittype('c*x^2 + a * x + b', 'options', S);
+            reg_coef_a2 = zeros(NumNPI, 1);
+            for kk = 1 : length(reg_coef_a2)
+                ffit = fit(x_data_train2(end-num_regression_days+1:end, kk), y_data_train2(end-num_regression_days+1:end), f);
+                reg_coef_a2(kk) = ffit.a;
+            end
+            reg_coef_b2 = mean(y_data_train2(end-num_regression_days+1:end) - x_data_train2(end-num_regression_days+1:end, :) * reg_coef_a2);
         end
-        y_pred_lasso2 = x_data_train2 * coef_2 + coef0_2;
-        %         axTrace2 = lassoPlot(B_LASSO2, FitInfo2);
+        y_pred_lasso2 = x_data_train2 * reg_coef_a2 + reg_coef_b2;
         
         % 6) FORECAST/PRESCRIPTION PHASE
         if(num_forecast_days > 0)
-            params.a = coef_2; % input influence weight vector
-            params.b = coef0_2; % input influence bias constant
+            params.a = reg_coef_a2; % input influence weight vector
+            params.b = reg_coef_b2; % input influence bias constant
             
             % A) Forecast/prescription phase with zero input (3-state EKF)
             IP = InterventionPlans';
@@ -287,12 +356,12 @@ for k = 1 : NumGeoLocations
                 disp(['Pareto front #' num2str(ll)]);
                 params.w = npi_weights;
                 params.epsilon = human_npi_cost_factor(ll); % [0, 1]: 0 neglects NPI cost and 1 neglects human factor!
-                lambda0 = 1;
-                q_lambda = 10;
+                lambda0 = 1.0;
+                q_lambda = 0.01;
                 %     s_init = [s_historic(end) ; i_historic(end) ; alpha0 ; lambda0 ; lambda0 ; lambda0]; % initial state vector
                 ss_init = cat(1, s_init , [lambda0 ; lambda0 ; lambda0]); % initial state vector
-                QQ_w = blkdiag(Q_w, 10.0*(params.dt)^2*diag([q_lambda, q_lambda, q_lambda].^2)); % Covariance matrix of initial states
-                PPs_init = blkdiag(Ps_init, 100.0*(params.dt)^2*diag([q_lambda, q_lambda, q_lambda].^2)); % Covariance matrix of initial states
+                QQ_w = blkdiag(Q_w, (params.dt)^2*diag([q_lambda, q_lambda, q_lambda].^2)); % Covariance matrix of initial states
+                PPs_init = blkdiag(Ps_init, 10.0*(params.dt)^2*diag([q_lambda, q_lambda, q_lambda].^2)); % Covariance matrix of initial states
                 % Set the finite horizon end points
                 s_final = nan(6, 1);
                 % % %         s_final(2) = 0; % zero infection rates
@@ -306,9 +375,9 @@ for k = 1 : NumGeoLocations
                 % % %     Ps_final(1, 1) = nan; % don't touch these end-point states during smoothing
                 % % %     Ps_final(2, 2) = nan; % don't touch these end-point states during smoothing
                 % % %     Ps_final(3, 3) = nan; % don't touch these end-point states during smoothing
-                Ps_final(4, 4) = 1e-3; % zero costates
-                Ps_final(5, 5) = 1e-3; % zero costates
-                Ps_final(6, 6) = 1e-3; % zero costates
+                Ps_final(4, 4) = 1e-8; % zero costates
+                Ps_final(5, 5) = 1e-8; % zero costates
+                Ps_final(6, 6) = 1e-8; % zero costates
                 control_input = [InterventionPlans', nan(NumNPI, num_forecast_days)]; % The second round works with real inputs
                 %s_init = [(N_population - I0)/N_population ; I0/N_population ; S_SMOOTH_round1_noinput(3, 1) ; S_SMOOTH_round1_noinput(4, 1) ; S_SMOOTH_round1_noinput(5, 1) ; S_SMOOTH_round1_noinput(6, 1)]; % initial state vector
                 if(isequal(params.obs_type, 'TOTALCASES'))
@@ -373,9 +442,8 @@ for k = 1 : NumGeoLocations
         %         MedRecentBetaEstimate = median(BetaEstimate(round(0.75*end) : end));
         
         if(plot_results)
-            
+            varnames = {'s', 'i', '\alpha'};
             figure
-            title([CountryName , ' ', RegionName]);
             for mm = 1 : 3
                 subplot(3, 1, mm);
                 errorbar(S_MINUS_round1_noinput(mm, :), sqrt(squeeze(P_MINUS_round1_noinput(mm, mm, :))));
@@ -384,6 +452,41 @@ for k = 1 : NumGeoLocations
                 errorbar(S_SMOOTH_round1_noinput(mm, :), sqrt(squeeze(P_SMOOTH_round1_noinput(mm, mm, :))));
                 legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
                 grid
+                if(mm == 1)
+                    title([CountryName , ' ', RegionName ' state estimates assuming no input NPI']);
+                end
+                ylabel(varnames{mm});
+            end
+            
+            figure
+            for mm = 1 : 3
+                subplot(3, 1, mm);
+                errorbar(S_MINUS_round2_withinput(mm, :), sqrt(squeeze(P_MINUS_round2_withinput(mm, mm, :))));
+                hold on
+                errorbar(S_PLUS_round2_withinput(mm, :), sqrt(squeeze(P_PLUS_round2_withinput(mm, mm, :))));
+                errorbar(S_SMOOTH_round2_withinput(mm, :), sqrt(squeeze(P_SMOOTH_round2_withinput(mm, mm, :))));
+                legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
+                grid
+                if(mm == 1)
+                    title([CountryName , ' ', RegionName ' state estimates assuming with historic input NPI']);
+                end
+                ylabel(varnames{mm});
+            end
+            
+            varnames = {'s', 'i', '\alpha', '\lambda_1', '\lambda_2', '\lambda_3'};
+            figure
+            for mm = 1 : 6
+                subplot(6, 1, mm);
+                errorbar(S_MINUS_optinput(mm, :), sqrt(squeeze(P_MINUS_optinput(mm, mm, :))));
+                hold on
+                errorbar(S_PLUS_optinput(mm, :), sqrt(squeeze(P_PLUS_optinput(mm, mm, :))));
+                errorbar(S_SMOOTH_optinput(mm, :), sqrt(squeeze(P_SMOOTH_optinput(mm, mm, :))));
+                legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
+                grid
+                if(mm == 1)
+                    title([CountryName , ' ', RegionName ' state estimates assuming with optimal input NPI']);
+                end
+                ylabel(varnames{mm});
             end
             
             figure
@@ -589,7 +692,7 @@ for k = 1 : NumGeoLocations
             close all
         end
         
-        TrainedModelParams = cat(1, TrainedModelParams, [CountryName, RegionName, {N_population}, {coef0}, {coef}, {coef0_2}, {coef_2}]);
+        TrainedModelParams = cat(1, TrainedModelParams, [CountryName, RegionName, {N_population}, {reg_coef_b}, {reg_coef_a}, {reg_coef_b2}, {reg_coef_a2}]);
     end
 end
 save(char(trained_model_params_file), 'TrainedModelParams');
