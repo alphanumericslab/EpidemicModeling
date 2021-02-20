@@ -63,14 +63,14 @@ Pk_minus = Ps_init;
 % Q can be a fixed matrix or time-variant
 if(size(Q_w, 1) == size(Q_w, 2)) % scalar or matrix process noise with fixed Q
     Q = repmat(Q_w, 1, 1, T);
-%     fixed_Q = true;
+    %     fixed_Q = true;
 elseif(isvector(Q_w) && length(Q_w) == T) % scalar process noise with variable Q
     Q = zeros(1, 1, T);
     Q(1, 1, :) = Q_w;
-%     fixed_Q = false;
+    %     fixed_Q = false;
 elseif(size(Q_w, 1) == size(Q_w, 2) && size(Q_w, 3) == T)  % scalar process noise with variable Q
     Q = Q_w;
-%     fixed_Q = false;
+    %     fixed_Q = false;
 else
     error('Process noise covariance noise mismatch');
 end
@@ -122,7 +122,7 @@ for k = 1 : T
     if(~isnan(x(:, k)))
         innovations(:, k) = x(:, k) - xk_minus;
         Kgain = Pk_minus * Ck_minus' / (Ck_minus * Pk_minus * Ck_minus' + gamma * (Dk_minus * R(:, :, k) * Dk_minus') + Gsp + Gvp); % Kalman gain
-
+        
         %         Pk_plus = (eye(m) - Kgain * Ck_minus) * Pk_minus / gamma;
         Pk_plus = ((eye(m) - Kgain * Ck_minus) * Pk_minus * (eye(m) - Kgain * Ck_minus)' + Kgain * (Dk_minus * R(:, :, k) * Dk_minus') * Kgain' )/ gamma; % Stabilized Kalman cov. matrix
         
@@ -136,7 +136,7 @@ for k = 1 : T
     
     % Trivial condition added to guarantee numerical stability
     Pk_plus = (Pk_plus + Pk_plus')/2.0;
-
+    
     % Apply hard margins on states
     sk_plus = handles.StateHardMargins(sk_plus, params);
     
@@ -175,10 +175,13 @@ for k = 1 : T
     %     cc = innovations(:, k)*innovations(:, k)'; % without mean cancellation
     cc = (innovations(:, k) - mu_k) * (innovations(:, k) - mu_k)'; % with mean cancellation
     InnovationsCov = cat(3, cc, InnovationsCov(:, :, 1 : inv_monitor_len - 1));
-    InnovationsCovNormalized = cat(3, cc / R, InnovationsCovNormalized(:, :, 1 : inv_monitor_len - 1));
+    InnovationsCovNormalized = cat(3, cc / (R(:, :, k) + eps), InnovationsCovNormalized(:, :, 1 : inv_monitor_len - 1));
     rho(:, :, k) = sum(InnovationsCovNormalized, 3) / stats_counter;
-    if(~isequal(beta, 1) && ~isnan(x(:, k)) && fixed_R == true)
-        R = beta * R + (1 - beta) * sum(InnovationsCov, 3) / stats_counter;
+    if(~isequal(beta, 1) && ~isnan(x(:, k)) && fixed_R == true && k < T)
+        %     if(~isequal(beta, 1) && ~isnan(x(:, k)) && k < T)
+        R_estim = sum(InnovationsCov, 3) / stats_counter;
+        %         R(:, :, k + 1 : end) = beta * R(:, :, k + 1 : end) + (1 - beta) * repmat(R_estim, 1, 1, T - k);
+        R(:, :, k + 1) = beta * R(:, :, k) + (1 - beta) * R_estim;
     end
 end
 
@@ -191,20 +194,18 @@ P_SMOOTH(:, :, T) = P_PLUS(:, :, T);
 % Replace estimates with boundary conditions, if available
 fixed_end_state = find(~isnan(s_final));
 S_SMOOTH(fixed_end_state, T) = s_final(fixed_end_state);
-% % % S_MINUS(fixed_end_state, T) = s_final(fixed_end_state);
 
 fixed_end_covs = find(~isnan(Ps_final));
 [row,col] = ind2sub(size(Ps_final), fixed_end_covs);
 for kk = 1 : length(row)
     P_SMOOTH(row(kk), col(kk), T) = Ps_final(row(kk), col(kk));
-    % % %     P_MINUS(row(kk), col(kk), T) = Ps_final(row(kk), col(kk));
 end
 
 for k = T - 1 : -1 : 1
     sk_plus = S_PLUS(:, k);
     Ak_plus = handles.StateJacobians(u(:, k), sk_plus, w_bar, params);
     
-    % Check to make sure that P_MINUS is not ill-conditioned 
+    % Check to make sure that P_MINUS is not ill-conditioned
     pmns = P_MINUS(:, :, k + 1);
     %     rcnd = rcond(pmns);
     if(sum(isnan(pmns(:))) > 0 || sum(isinf(pmns(:))) > 0)% || rcond(pmns) < 2.0*eps)

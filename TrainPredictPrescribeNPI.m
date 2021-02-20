@@ -91,7 +91,7 @@ NumNPI = length(included_IP); % Number of NPI
 TrainedModelParams = [{'CountryName'}, {'RegionName'}, {'N_population'}, {'reg_coef_b'}, {'reg_coef_a'}, {'reg_coef_b2'}, {'reg_coef_a2'}];
 
 for k = 1 : NumGeoLocations
-    if(~isempty(find(SelectedGeoIDs == CountryAndRegionList(k), 1)))% && isequal(CountryAndRegionList(k), "China ")) % make sure the current country/region is among the ones to be processed
+    if(~isempty(find(SelectedGeoIDs == CountryAndRegionList(k), 1)) && isequal(CountryAndRegionList(k), "Argentina ")) % make sure the current country/region is among the ones to be processed
         % 1) READ AND CLEAN THE DATA
         disp([num2str(k) '- ' char(CountryAndRegionList(k))]);
         geoid_all_row_indexes = AllGeoIDs == CountryAndRegionList(k) & all_data.Date >= start_train_date_number & all_data.Date <= end_train_date_number; % fetch all rows corresponding to the country/region from start date to end date
@@ -188,7 +188,7 @@ for k = 1 : NumGeoLocations
         alpha0 = params.beta + log(R0)/params.dt; % The logic is that in the SIalpha model, during the outbreak R0 = exp(dt*(alpha - beta)) and alpha = beta is the metastable threshold (R0 = 1) %1.0/N_population; % the per-population normalization is needed
         
         params.sigma = 1000000; % sigmoid function slope
-        beta_ekf = .9; % Observation noise update factor (set to 1 for no update)
+        beta_ekf = 1.0;%.9; % Observation noise update factor (set to 1 for no update)
         gamma_ekf = 0.995; % Kalman gain stability factor (set very close to 1, or equal to 1 to disable the feature)
         inv_monitor_len_ekf = 21; % Window length for innovations process whiteness monitoring
         order = 1; % 1 for standard EKF; 2 for second-order EKF
@@ -203,12 +203,12 @@ for k = 1 : NumGeoLocations
         Ps_init = (params.dt)^2*diag([10*s_noise_std, 10*i_noise_std, 10*alpha_noise_std].^2); % Covariance matrix of initial states
         s_final = nan(3, 1); % Set the finite horizon end points (not required during first round)
         Ps_final = nan(3); % Set the finite horizon end points (not required during first round)
+        R_v = 0.1 * ((NewCasesSmoothedZeroLag' - NewCasesRefined')/N_population).^2; % Observation noise variance estimate
         if(isequal(params.obs_type, 'TOTALCASES'))
             observations = ConfirmedCasesSmoothedNormalized(:)';
         elseif(isequal(params.obs_type, 'NEWCASES'))
             observations = NewCasesSmoothedNormalized(:)';
             %             R_v = var((NewCasesSmoothedZeroLag - NewCasesRefined)/N_population); % Observation noise variance estimate
-            R_v = 0.1 * ((NewCasesSmoothedZeroLag' - NewCasesRefined')/N_population).^2; % Observation noise variance estimate
             %             R_v = BaseLine1(((NewCasesSmoothedZeroLag' - NewCasesRefined')/N_population).^2, SmoothingWinLen, 'mn'); % Observation noise variance estimate
         end
         [~, ~, S_MINUS_round1_noinput, S_PLUS_round1_noinput, S_SMOOTH_round1_noinput, P_MINUS_round1_noinput, P_PLUS_round1_noinput, P_SMOOTH_round1_noinput, ~, ~, rho_round1_noinput] = SIAlphaModelEKF(control_input, observations, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
@@ -386,7 +386,18 @@ for k = 1 : NumGeoLocations
                     observations = [NewCasesSmoothedNormalized(:)', nan(1, num_forecast_days)];
                 end
                 [opt_control_input, opt_control_input_smooth, S_MINUS_optinput, S_PLUS_optinput, S_SMOOTH_optinput, P_MINUS_optinput, P_PLUS_optinput, P_SMOOTH_optinput, ~, ~, rho_optinput] = SIAlphaModelEKFOptControlled(control_input, observations, params, ss_init, PPs_init, s_final, Ps_final, w_bar, v_bar, QQ_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, 1);
-                % % %             [~, S_MINUS_backward, S_PLUS_backward, S_SMOOTH_backward, P_MINUS_backward, P_PLUS_backward, P_SMOOTH_backward, ~, ~, rho_backward] = SIAlphaModelBackwardEKF(control_input, NewCasesSmoothedNormalized(:)', params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
+                
+                % Backward filtering (under test)
+                s_final = [1, 0, 0, 0, 0, 0];
+                Ps_final = diag([.1, .1, 1e-2, 1e-8, 1e-8, 1e-8]);
+                [~, ~, S_MINUS_backward, S_PLUS_backward, S_SMOOTH_backward, P_MINUS_backward, P_PLUS_backward, P_SMOOTH_backward, ~, ~, rho_backward] = SIAlphaModelBackwardEKFOptControlled(control_input, observations, params, ss_init, PPs_init, s_final, Ps_final, w_bar, v_bar, QQ_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
+                
+                %                 S_FRW_BCK = zeros(6, length(observations));
+                %                 P_FRW_BCK = zeros(6, 6, length(observations));
+                %                 for hh = 1 : length(observations)
+                %                     P_FRW_BCK(:, :, hh) = (P_PLUS_optinput(:, :, hh) + P_PLUS_backward(:, :, hh))\(P_PLUS_optinput(:, :, hh) * P_PLUS_backward(:, :, hh));
+                %                     S_FRW_BCK(:, hh) = pinv(P_PLUS_optinput(:, :, hh) + P_PLUS_backward(:, :, hh))*(P_PLUS_backward(:, :, hh) * S_PLUS_optinput(:, hh) + P_PLUS_optinput(:, :, hh) * S_PLUS_backward(:, hh));
+                %                 end
                 
                 % Generate test scenario
                 s_historic = S_SMOOTH_optinput(1, 1 : NumNPIdays);
@@ -441,6 +452,7 @@ for k = 1 : NumGeoLocations
         %         BetaEstimate = DeathToCumInfectionsRatio/MedRecentFatalityRate;
         %         MedRecentBetaEstimate = median(BetaEstimate(round(0.75*end) : end));
         
+        % PLOT RESULTS
         if(plot_results)
             varnames = {'s', 'i', '\alpha'};
             figure
@@ -453,7 +465,7 @@ for k = 1 : NumGeoLocations
                 legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
                 grid
                 if(mm == 1)
-                    title([CountryName , ' ', RegionName ' state estimates assuming no input NPI']);
+                    title(strjoin([CountryName , ' ', RegionName ' state estimates assuming no input NPI']));
                 end
                 ylabel(varnames{mm});
             end
@@ -468,7 +480,7 @@ for k = 1 : NumGeoLocations
                 legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
                 grid
                 if(mm == 1)
-                    title([CountryName , ' ', RegionName ' state estimates assuming with historic input NPI']);
+                    title(strjoin([CountryName , ' ', RegionName ' state estimates assuming with historic input NPI']));
                 end
                 ylabel(varnames{mm});
             end
@@ -484,9 +496,28 @@ for k = 1 : NumGeoLocations
                 legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
                 grid
                 if(mm == 1)
-                    title([CountryName , ' ', RegionName ' state estimates assuming with optimal input NPI']);
+                    title(strjoin([CountryName , ' ', RegionName ' state estimates assuming with optimal input NPI']));
                 end
                 ylabel(varnames{mm});
+            end
+            
+            if(0)
+                figure
+                for mm = 1 : 6
+                    subplot(6, 1, mm);
+                    errorbar(S_PLUS_optinput(mm, :), sqrt(squeeze(P_PLUS_optinput(mm, mm, :))));
+                    hold on
+                    errorbar(S_SMOOTH_optinput(mm, :), sqrt(squeeze(P_SMOOTH_optinput(mm, mm, :))));
+                    errorbar(S_PLUS_backward(mm, :), sqrt(squeeze(P_PLUS_backward(mm, mm, :))));
+                    errorbar(S_SMOOTH_backward(mm, :), sqrt(squeeze(P_SMOOTH_backward(mm, mm, :))));
+                    %                 errorbar(S_FRW_BCK(mm, :), sqrt(squeeze(P_FRW_BCK(mm, mm, :))));
+                    legend('S_PLUS', 'S_SMOOTH', 'S_PLUS_bck', 'S_SMOOTH_bck');%, 'S_FRW_BCK');
+                    grid
+                    if(mm == 1)
+                        title(strjoin([CountryName , ' ', RegionName ' forward vs backwards state estimates']));
+                    end
+                    ylabel(varnames{mm});
+                end
             end
             
             figure
@@ -537,51 +568,48 @@ for k = 1 : NumGeoLocations
             subplot(414);
             plot(InterventionPlans);
             grid
-            % % %         plot(AlphaHatARX)
-            % % %         hold on
-            % % %         plot(ar_train_segment, 'r')
-            % % %         grid
             
-            % % % %         figure
-            % % % % %         plot(NewCasesSmoothed);
-            % % % %         plot(ConfirmedCases);
-            % % % %         hold on
-            % % % %         plot(ConfirmedDeaths);
-            % % % %         plot(N_population * S_PLUS_round1_noinput(1, :) .* S_PLUS_round1_noinput(2, :) .* S_PLUS_round1_noinput(3, :));
-            % % % %         plot(cumsum(N_population * S_PLUS_round1_noinput(2, :)));
-            % % % %         grid
-            % % % %         legend('ConfirmedCases', 'ConfirmedDeaths', 'Estimated new cases', 'Estimated infections');
-            % % % % %         legend('NewCasesSmoothed', 'ConfirmedDeaths', 'Estimated new cases', 'Estimated infections');
-            
-            % % %         figure
-            % % %         subplot(211);
-            % % %         plot(100.0 * FatalityRate);
-            % % %         hold on
-            % % %         plot(100.0 * MedFatalityRate(ones(1, length(FatalityRate))), 'linewidth', 2);
-            % % %         plot(100.0 * MedRecentFatalityRate(ones(1, length(FatalityRate))), 'linewidth', 2);
-            % % %         plot(CaseFatalityJHDB(ones(1, length(FatalityRate))), 'linewidth', 2);
-            % % %         title([CountryAndRegionList(k) ' mortality rate (%)'], 'interpreter', 'none');
-            % % %         grid
-            % % %         legend('FatalityRate', 'MedFatalityRate', 'MedRecentFatalityRate', 'CaseFatalityJHDB');
-            % % %
-            % % %         subplot(212);
-            % % %         plot(BetaEstimate);
-            % % %         hold on
-            % % %         plot(MedRecentBetaEstimate(ones(1, length(BetaEstimate))), 'linewidth', 2);
-            % % %         legend('\beta estimate', 'MedRecentBetaEstimate');
-            % % %         grid
-            
-            % % %         figure
-            % % %         hold on
-            % % %         plot(diff(ConfirmedCases));
-            % % %         plot(NewCasesSmoothed);
-            % % %         plot(NewDeathsSmoothed/FatalityRate(end));
-            % % %         %     plot(ConfirmedCases - ConfirmedDeaths);
-            % % %         %     legend('ConfirmedCases', 'ConfirmedDeaths/FatalityRate', 'RecoveredCases');
-            % % %         legend('diff(ConfirmedCases)', 'NewCasesSmoothed', 'NewDeathsSmoothedNormalized');
-            % % %         title([CountryAndRegionList(k) ' mortality rate (%)'], 'interpreter', 'none');
-            % % %         grid
-            
+            if(0)
+                figure
+                %         plot(NewCasesSmoothed);
+                plot(ConfirmedCases);
+                hold on
+                plot(ConfirmedDeaths);
+                plot(N_population * S_PLUS_round1_noinput(1, :) .* S_PLUS_round1_noinput(2, :) .* S_PLUS_round1_noinput(3, :));
+                plot(cumsum(N_population * S_PLUS_round1_noinput(2, :)));
+                grid
+                legend('ConfirmedCases', 'ConfirmedDeaths', 'Estimated new cases', 'Estimated infections');
+                %         legend('NewCasesSmoothed', 'ConfirmedDeaths', 'Estimated new cases', 'Estimated infections');
+                
+                figure
+                subplot(211);
+                plot(100.0 * FatalityRate);
+                hold on
+                plot(100.0 * MedFatalityRate(ones(1, length(FatalityRate))), 'linewidth', 2);
+                plot(100.0 * MedRecentFatalityRate(ones(1, length(FatalityRate))), 'linewidth', 2);
+                plot(CaseFatalityJHDB(ones(1, length(FatalityRate))), 'linewidth', 2);
+                title([CountryAndRegionList(k) ' mortality rate (%)'], 'interpreter', 'none');
+                grid
+                legend('FatalityRate', 'MedFatalityRate', 'MedRecentFatalityRate', 'CaseFatalityJHDB');
+                
+                subplot(212);
+                plot(BetaEstimate);
+                hold on
+                plot(MedRecentBetaEstimate(ones(1, length(BetaEstimate))), 'linewidth', 2);
+                legend('\beta estimate', 'MedRecentBetaEstimate');
+                grid
+                
+                figure
+                hold on
+                plot(diff(ConfirmedCases));
+                plot(NewCasesSmoothed);
+                plot(NewDeathsSmoothed/FatalityRate(end));
+                %     plot(ConfirmedCases - ConfirmedDeaths);
+                %     legend('ConfirmedCases', 'ConfirmedDeaths/FatalityRate', 'RecoveredCases');
+                legend('diff(ConfirmedCases)', 'NewCasesSmoothed', 'NewDeathsSmoothedNormalized');
+                title([CountryAndRegionList(k) ' mortality rate (%)'], 'interpreter', 'none');
+                grid
+            end
             
             figure
             subplot(311);
@@ -648,44 +676,42 @@ for k = 1 : NumGeoLocations
             set(gca, 'fontsize', 16)
             set(gca, 'box', 'on')
             
-            % % %         figure
-            % % %         subplot(311);
-            % % %         errorbar(S_MINUS_round1_noinput(4, :), sqrt(squeeze(P_MINUS_round1_noinput(4, 4, :))));
-            % % %         hold on
-            % % %         errorbar(S_PLUS_round1_noinput(4, :), sqrt(squeeze(P_PLUS_round1_noinput(4, 4, :))));
-            % % %         errorbar(S_SMOOTH_round1_noinput(4, :), sqrt(squeeze(P_SMOOTH_round1_noinput(4, 4, :))));
-            % % %         errorbar(S_MINUS_round2_withinput(4, :), sqrt(squeeze(P_MINUS_round2_withinput(1, 1, :))));
-            % % %         errorbar(S_PLUS_round2_withinput(4, :), sqrt(squeeze(P_PLUS_round2_withinput(4, 4, :))));
-            % % %         errorbar(S_SMOOTH_round2_withinput(4, :), sqrt(squeeze(P_SMOOTH_round2_withinput(4, 4, :))));
-            % % %         legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');
-            % % %         title(CountryAndRegionList(k), 'interpreter', 'none');
-            % % %         grid
-            % % %         subplot(312);
-            % % %         errorbar(S_MINUS_round1_noinput(5, :), sqrt(squeeze(P_MINUS_round1_noinput(5, 5, :))));
-            % % %         hold on
-            % % %         errorbar(S_PLUS_round1_noinput(5, :), sqrt(squeeze(P_PLUS_round1_noinput(5, 5, :))));
-            % % %         errorbar(S_SMOOTH_round1_noinput(5, :),sqrt(squeeze(P_SMOOTH_round1_noinput(5, 5, :))));
-            % % %         errorbar(S_MINUS_round2_withinput(5, :), sqrt(squeeze(P_MINUS_round2_withinput(5, 5, :))));
-            % % %         errorbar(S_PLUS_round2_withinput(5, :), sqrt(squeeze(P_PLUS_round2_withinput(5, 5, :))));
-            % % %         errorbar(S_SMOOTH_round2_withinput(5, :), sqrt(squeeze(P_SMOOTH_round2_withinput(5, 5, :))));
-            % % %         legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');
-            % % %         title(CountryAndRegionList(k), 'interpreter', 'none');
-            % % %         grid
-            % % %         subplot(313);
-            % % %         errorbar(S_MINUS_round1_noinput(6, :), sqrt(squeeze(P_MINUS_round1_noinput(6, 6, :))));
-            % % %         hold on
-            % % %         errorbar(S_PLUS_round1_noinput(6, :), sqrt(squeeze(P_PLUS_round1_noinput(6, 6, :))));
-            % % %         errorbar(S_SMOOTH_round1_noinput(6, :), sqrt(squeeze(P_SMOOTH_round1_noinput(6, 6, :))));
-            % % %         errorbar(S_MINUS_round2_withinput(6, :), sqrt(squeeze(P_MINUS_round2_withinput(6, 6, :))));
-            % % %         errorbar(S_PLUS_round2_withinput(6, :), sqrt(squeeze(P_PLUS_round2_withinput(6, 6, :))));
-            % % %         errorbar(S_SMOOTH_round2_withinput(6, :), sqrt(squeeze(P_SMOOTH_round2_withinput(6, 6, :))));
-            % % %         legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');
-            % % %         title(CountryAndRegionList(k), 'interpreter', 'none');
-            % % %         grid
-            
-            % % %             params.beta
-            % % %             N_population
-            
+            if(0)
+                figure
+                subplot(311);
+                errorbar(S_MINUS_round1_noinput(4, :), sqrt(squeeze(P_MINUS_round1_noinput(4, 4, :))));
+                hold on
+                errorbar(S_PLUS_round1_noinput(4, :), sqrt(squeeze(P_PLUS_round1_noinput(4, 4, :))));
+                errorbar(S_SMOOTH_round1_noinput(4, :), sqrt(squeeze(P_SMOOTH_round1_noinput(4, 4, :))));
+                errorbar(S_MINUS_round2_withinput(4, :), sqrt(squeeze(P_MINUS_round2_withinput(1, 1, :))));
+                errorbar(S_PLUS_round2_withinput(4, :), sqrt(squeeze(P_PLUS_round2_withinput(4, 4, :))));
+                errorbar(S_SMOOTH_round2_withinput(4, :), sqrt(squeeze(P_SMOOTH_round2_withinput(4, 4, :))));
+                legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');
+                title(CountryAndRegionList(k), 'interpreter', 'none');
+                grid
+                subplot(312);
+                errorbar(S_MINUS_round1_noinput(5, :), sqrt(squeeze(P_MINUS_round1_noinput(5, 5, :))));
+                hold on
+                errorbar(S_PLUS_round1_noinput(5, :), sqrt(squeeze(P_PLUS_round1_noinput(5, 5, :))));
+                errorbar(S_SMOOTH_round1_noinput(5, :),sqrt(squeeze(P_SMOOTH_round1_noinput(5, 5, :))));
+                errorbar(S_MINUS_round2_withinput(5, :), sqrt(squeeze(P_MINUS_round2_withinput(5, 5, :))));
+                errorbar(S_PLUS_round2_withinput(5, :), sqrt(squeeze(P_PLUS_round2_withinput(5, 5, :))));
+                errorbar(S_SMOOTH_round2_withinput(5, :), sqrt(squeeze(P_SMOOTH_round2_withinput(5, 5, :))));
+                legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');
+                title(CountryAndRegionList(k), 'interpreter', 'none');
+                grid
+                subplot(313);
+                errorbar(S_MINUS_round1_noinput(6, :), sqrt(squeeze(P_MINUS_round1_noinput(6, 6, :))));
+                hold on
+                errorbar(S_PLUS_round1_noinput(6, :), sqrt(squeeze(P_PLUS_round1_noinput(6, 6, :))));
+                errorbar(S_SMOOTH_round1_noinput(6, :), sqrt(squeeze(P_SMOOTH_round1_noinput(6, 6, :))));
+                errorbar(S_MINUS_round2_withinput(6, :), sqrt(squeeze(P_MINUS_round2_withinput(6, 6, :))));
+                errorbar(S_PLUS_round2_withinput(6, :), sqrt(squeeze(P_PLUS_round2_withinput(6, 6, :))));
+                errorbar(S_SMOOTH_round2_withinput(6, :), sqrt(squeeze(P_SMOOTH_round2_withinput(6, 6, :))));
+                legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');
+                title(CountryAndRegionList(k), 'interpreter', 'none');
+                grid
+            end
             
             %             pause(2)
             %             input('Press enter/return to process next country/region.');
