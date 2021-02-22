@@ -18,8 +18,8 @@ We can see below the bi-objective optimization space for sample countries. Blue:
 | <img width="250px" src="Figures/Afghanistan.png"> | <img width="250px" src="Figures/France.png"> | <img width="250px" src="Figures/Iran.png"> |
 | :---: | :---: | :---: |
 | Afghanistan | France | Iran |
-| <img width="250px" src="Figures/Germany.png"> | <img width="250px" src="Figures/Spain.png"> | <img width="250px" src="Figures/SriLanka.png"> |
-| Germany | Spain | Sri Lanka |
+| <img width="250px" src="Figures/Germany.png"> | <img width="250px" src="Figures/Spain.png"> | <img width="250px" src="Figures/Argentina.png"> |
+| Germany | Spain | Argentina |
 | <img width="250px" src="Figures/US.png"> | <img width="250px" src="Figures/Italy.png"> | <img width="250px" src="Figures/SouthAfrica.png"> |
 | US | Italy | South Africa |
 | <img width="250px" src="Figures/UK.png"> | <img width="250px" src="Figures/Brazil.png"> | <img width="250px" src="Figures/China.png"> |
