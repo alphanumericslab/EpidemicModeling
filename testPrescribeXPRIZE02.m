@@ -15,6 +15,7 @@ END_DATE_PREDICT_PRESCRIBE = "2021-06-07"; % end time
 % LATEST_DATA_FILE = './../covid-policy-tracker/data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
 LATEST_DATA_FILE = 'xprize-sample-data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
 GEO_FILE = "xprize-sample-data/countries_regions.csv"; % countries and regions to include
+% GEO_FILE = "xprize-sample-data/countries_regions_short_list.csv"; % countries and regions to include
 POPULATION_FILE = "xprize-sample-data/populations.csv"; % country and regional populations
 % TRAINED_MODEL_PARAMS_FILE = "xprize-sample-data/prescription_trained_params_lasso.mat"; % file to log the trained model parameters
 % TRAINED_MODEL_PARAMS_FILE = "xprize-sample-data/prescription_trained_params_nonnegls.mat"; % file to log the trained model parameters
