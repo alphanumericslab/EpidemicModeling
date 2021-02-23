@@ -11,8 +11,8 @@ The latest version of a technical report on this research is available at: https
 
 ### The XPRIZE Pandemic Response Challenge
 The repository also contains the models and MATLAB codes developed by the Alphanumerics Team, during the [XPRIZE Pandemic Response Challenge](https://www.xprize.org/challenge/pandemicresponse) for predicting future trends of the pandemic for different regions/countries using their previous trends and the non-pharmaceutical intervention (NPI) plans adopted in each region/country. Examples of such quantitative NPIs can be found in the [Oxford Covid-19 Government Response Tracker](https://github.com/OxCGRT/covid-policy-tracker). The second phase of the challenge was focused on the prescription of NPIs, which balance between human factors (new cases and fatality rate) and a weighted cost of the interventions. The Alphanumerics Team developed an algorithm based on *optimal estimation* and *finite horizon optimal control* to achieve this goal. The main MATLAB scripts developed by our team during Phase II of the Pandemic Response Challenge can be accessed through [testPrescribeXPRIZE02.m](testScripts/testPrescribeXPRIZE02.m). The theoretical details of our proposed methods are available in the following preprints:
-- Sameni, R. (2021). Model-based prediction and optimal control ofpandemics by nonpharmaceutical interventions. [arXiv preprint arXiv:2102.06609.](http://arxiv.org/abs/2102.06609)
-- Sameni, R. (2020). Mathematical modeling of epidemic diseases; acase study of the COVID-19 coronavirus. [arXiv preprint arXiv:2003.11371.](https://arxiv.org/abs/2003.11371)
+- Sameni, R. (2021). Model-based prediction and optimal control of pandemics by nonpharmaceutical interventions. [arXiv preprint arXiv:2102.06609.](http://arxiv.org/abs/2102.06609)
+- Sameni, R. (2020). Mathematical modeling of epidemic diseases; a case study of the COVID-19 coronavirus. [arXiv preprint arXiv:2003.11371.](https://arxiv.org/abs/2003.11371)
 
 Please cite the above and the current repository, to refer to this work.
 
