@@ -380,42 +380,58 @@ for k = 1 : NumGeoLocations
                 disp(['Pareto front #' num2str(ll)]);
                 params.w = npi_weights;
                 params.epsilon = human_npi_cost_factor(ll); % [0, 1]: 0 neglects NPI cost and 1 neglects human factor!
-                lambda0 = 1.0;
-                q_lambda = 0.01;
+                lambda0 = 0.0;
+                q_lambda = 0.0001;
                 %     s_init = [s_historic(end) ; i_historic(end) ; alpha0 ; lambda0 ; lambda0 ; lambda0]; % initial state vector
                 ss_init = cat(1, s_init , [lambda0 ; lambda0 ; lambda0]); % initial state vector
                 QQ_w = blkdiag(Q_w, (params.dt)^2*diag([q_lambda, q_lambda, q_lambda].^2)); % Covariance matrix of initial states
                 PPs_init = blkdiag(Ps_init, 10.0*(params.dt)^2*diag([q_lambda, q_lambda, q_lambda].^2)); % Covariance matrix of initial states
+                
                 % Set the finite horizon end points
-                s_final = nan(6, 1);
-                % % %         s_final(2) = 0; % zero infection rates
-                s_final(4) = 0; % zero costates
-                s_final(5) = 0; % zero costates
-                s_final(6) = 0; % zero costates
-                Ps_final = zeros(6);
-                Ps_final(1:3, 1:3) = nan; % don't touch these end-point states during smoothing
-                % % %         Ps_final(2, 2) = 1e-4; % zero infection rates
-                %     Ps_final(4 : 6, 4 : 6) = 1e-6;
-                % % %     Ps_final(1, 1) = nan; % don't touch these end-point states during smoothing
-                % % %     Ps_final(2, 2) = nan; % don't touch these end-point states during smoothing
-                % % %     Ps_final(3, 3) = nan; % don't touch these end-point states during smoothing
-                Ps_final(4, 4) = 1e-8; % zero costates
-                Ps_final(5, 5) = 1e-8; % zero costates
-                Ps_final(6, 6) = 1e-8; % zero costates
+                finial_conditions_setup = 1;
+                if(finial_conditions_setup == 0)
+                    s_final = nan(6, 1);
+                    s_final(4) = 0; % zero costates
+                    s_final(5) = 0; % zero costates
+                    s_final(6) = 0; % zero costates
+                    Ps_final = nan(6);
+%                     Ps_final(1:3, 1:3) = nan; % don't touch these end-point states during smoothing
+                    Ps_final(4, 4) = 1e-8; % zero costates
+                    Ps_final(5, 5) = 1e-8; % zero costates
+                    Ps_final(6, 6) = 1e-8; % zero costates
+                elseif(finial_conditions_setup == 1)
+                    s_final = nan(6, 1);
+                    s_final(4) = 0; % zero costates
+                    s_final(5) = 0; % zero costates
+                    s_final(6) = 0; % zero costates
+                    Ps_final = zeros(6);
+                    Ps_final(1:3, 1:3) = nan; % don't touch these end-point states during smoothing
+                    Ps_final(4, 4) = 1e-8; % zero costates
+                    Ps_final(5, 5) = 1e-8; % zero costates
+                    Ps_final(6, 6) = 1e-8; % zero costates
+                elseif(finial_conditions_setup == 2)
+                    s_final = [0.9, 0.0, 0.0, 0.0, 0.0, 0.0];
+                    Ps_final = diag([0.1, 0.1, 0.01, 1e-4, 1e-4, 1e-4].^2);
+                end
                 control_input = [InterventionPlans', nan(NumNPI, num_forecast_days)]; % The second round works with real inputs
                 %s_init = [(N_population - I0)/N_population ; I0/N_population ; S_SMOOTH_round1_noinput(3, 1) ; S_SMOOTH_round1_noinput(4, 1) ; S_SMOOTH_round1_noinput(5, 1) ; S_SMOOTH_round1_noinput(6, 1)]; % initial state vector
                 [~, opt_control_input_smooth, S_MINUS_optinput, S_PLUS_optinput, S_SMOOTH_optinput, P_MINUS_optinput, P_PLUS_optinput, P_SMOOTH_optinput, ~, ~, ~] = SIAlphaModelEKFOptControlled(control_input, observations, params, ss_init, PPs_init, s_final, Ps_final, w_bar, v_bar, QQ_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, 1);
                 
                 % Backward filtering (under test)
-                %                 s_final = [1, 0, 0, 0, 0, 0];
-                %                 Ps_final = diag([.1, .1, 1e-2, 1e-8, 1e-8, 1e-8]);
-                %                 [~, ~, S_MINUS_backward, S_PLUS_backward, S_SMOOTH_backward, P_MINUS_backward, P_PLUS_backward, P_SMOOTH_backward, ~, ~, rho_backward] = SIAlphaModelBackwardEKFOptControlled(control_input, observations, params, ss_init, PPs_init, s_final, Ps_final, w_bar, v_bar, QQ_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
-                %                 S_FRW_BCK = zeros(6, length(observations));
-                %                 P_FRW_BCK = zeros(6, 6, length(observations));
-                %                 for hh = 1 : length(observations)
-                %                     P_FRW_BCK(:, :, hh) = (P_PLUS_optinput(:, :, hh) + P_PLUS_backward(:, :, hh))\(P_PLUS_optinput(:, :, hh) * P_PLUS_backward(:, :, hh));
-                %                     S_FRW_BCK(:, hh) = pinv(P_PLUS_optinput(:, :, hh) + P_PLUS_backward(:, :, hh))*(P_PLUS_backward(:, :, hh) * S_PLUS_optinput(:, hh) + P_PLUS_optinput(:, :, hh) * S_PLUS_backward(:, hh));
-                %                 end
+                % % %                 s_final = [S_PLUS_optinput(1, end), S_PLUS_optinput(2, end), S_PLUS_optinput(3, end), 0, 0, 0];
+                % % %                 Ps_final = diag([P_SMOOTH_optinput(1, 1, end), P_SMOOTH_optinput(2, 2, end), P_SMOOTH_optinput(3, 3, end), 1e-8, 1e-8, 1e-8]);
+                % % %                 %                 Ps_final = diag([P_SMOOTH_optinput(1, 1, end), P_SMOOTH_optinput(2, 2, end), P_SMOOTH_optinput(3, 3, end), 1e-3, 1e-3, 1e-3].^2);
+                % % %                 %                 s_final = [0.5, 0.5, 0.1, 0, 0, 0];
+                % % %                 %                 Ps_final = diag([0.5, 0.5, 0.1, 1e-3, 1e-3, 1e-3].^2);
+                % % %                 [~, ~, S_MINUS_backward, S_PLUS_backward, S_SMOOTH_backward, P_MINUS_backward, P_PLUS_backward, P_SMOOTH_backward, ~, ~, rho_backward] = SIAlphaModelBackwardEKFOptControlled(control_input, observations, params, ss_init, PPs_init, s_final, Ps_final, w_bar, v_bar, QQ_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
+                % % % %                 observations_est = S_SMOOTH_optinput(1, :) .* S_SMOOTH_optinput(2, :) .* S_SMOOTH_optinput(3, :);
+                % % % %                 [~, ~, S_MINUS_backward, S_PLUS_backward, S_SMOOTH_backward, P_MINUS_backward, P_PLUS_backward, P_SMOOTH_backward, ~, ~, rho_backward] = SIAlphaModelBackwardEKFOptControlled(opt_control_input_smooth, observations_est, params, ss_init, PPs_init, s_final, Ps_final, w_bar, v_bar, QQ_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, order);
+                % % %                 %                 S_FRW_BCK = zeros(6, length(observations));
+                % % %                 %                 P_FRW_BCK = zeros(6, 6, length(observations));
+                % % %                 %                 for hh = 1 : length(observations)
+                % % %                 %                     P_FRW_BCK(:, :, hh) = (P_PLUS_optinput(:, :, hh) + P_PLUS_backward(:, :, hh))\(P_PLUS_optinput(:, :, hh) * P_PLUS_backward(:, :, hh));
+                % % %                 %                     S_FRW_BCK(:, hh) = pinv(P_PLUS_optinput(:, :, hh) + P_PLUS_backward(:, :, hh))*(P_PLUS_backward(:, :, hh) * S_PLUS_optinput(:, hh) + P_PLUS_optinput(:, :, hh) * S_PLUS_backward(:, hh));
+                % % %                 %                 end
                 
                 % Generate test scenario
                 [s_opt_control, i_opt_control, alpha_opt_control] = SIalpha_Controlled(opt_control_input_smooth(:, NumNPIdays + 1 : end), s_historic(end), i_historic(end), alpha_historic(end), NPI_MAXES, params.alpha_min, params.alpha_max, params.gamma, params.a, params.b, params.beta, s_noise_std, i_noise_std, alpha_noise_std, num_forecast_days, params.dt);
@@ -500,19 +516,21 @@ for k = 1 : NumGeoLocations
             end
             
             varnames = {'s', 'i', '\alpha', '\lambda_1', '\lambda_2', '\lambda_3'};
-            figure
-            for mm = 1 : 6
-                subplot(6, 1, mm);
-                errorbar(S_MINUS_optinput(mm, :), sqrt(squeeze(P_MINUS_optinput(mm, mm, :))));
-                hold on
-                errorbar(S_PLUS_optinput(mm, :), sqrt(squeeze(P_PLUS_optinput(mm, mm, :))));
-                errorbar(S_SMOOTH_optinput(mm, :), sqrt(squeeze(P_SMOOTH_optinput(mm, mm, :))));
-                legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
-                grid
-                if(mm == 1)
-                    title(strjoin([CountryName , ' ', RegionName ' state estimates assuming with optimal input NPI']));
+            if(1)
+                figure
+                for mm = 1 : 6
+                    subplot(6, 1, mm);
+                    errorbar(S_MINUS_optinput(mm, :), sqrt(squeeze(P_MINUS_optinput(mm, mm, :))));
+                    hold on
+                    errorbar(S_PLUS_optinput(mm, :), sqrt(squeeze(P_PLUS_optinput(mm, mm, :))));
+                    errorbar(S_SMOOTH_optinput(mm, :), sqrt(squeeze(P_SMOOTH_optinput(mm, mm, :))));
+                    legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
+                    grid
+                    if(mm == 1)
+                        title(strjoin([CountryName , ' ', RegionName ' state estimates assuming optimal input NPI']));
+                    end
+                    ylabel(varnames{mm});
                 end
-                ylabel(varnames{mm});
             end
             
             if(0)
@@ -635,9 +653,9 @@ for k = 1 : NumGeoLocations
             errorbar(N_population*S_MINUS_round2_withinput(1, :), N_population*sqrt(squeeze(P_MINUS_round2_withinput(1, 1, :))));
             errorbar(N_population*S_PLUS_round2_withinput(1, :), N_population*sqrt(squeeze(P_PLUS_round2_withinput(1, 1, :))));
             errorbar(N_population*S_SMOOTH_round2_withinput(1, :), N_population*sqrt(squeeze(P_SMOOTH_round2_withinput(1, 1, :))));
-            %         errorbar(N_population*S_MINUS_backward(1, :), N_population*sqrt(squeeze(P_MINUS_backward(1, 1, :))));
-            %         errorbar(N_population*S_PLUS_backward(1, :), N_population*sqrt(squeeze(P_PLUS_backward(1, 1, :))));
-            %         errorbar(N_population*S_SMOOTH_backward(1, :), N_population*sqrt(squeeze(P_SMOOTH_backward(1, 1, :))));
+            %             errorbar(N_population*S_MINUS_backward(1, :), N_population*sqrt(squeeze(P_MINUS_backward(1, 1, :))));
+            %             errorbar(N_population*S_PLUS_backward(1, :), N_population*sqrt(squeeze(P_PLUS_backward(1, 1, :))));
+            %             errorbar(N_population*S_SMOOTH_backward(1, :), N_population*sqrt(squeeze(P_SMOOTH_backward(1, 1, :))));
             legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');%, 'MINUS_backward', 'PLUS_backward', 'SMOOTH_backward');
             title(CountryAndRegionList(k), 'interpreter', 'none');
             grid
@@ -650,11 +668,12 @@ for k = 1 : NumGeoLocations
             errorbar(N_population*S_MINUS_round2_withinput(2, :), N_population*sqrt(squeeze(P_MINUS_round2_withinput(2, 2, :))));
             errorbar(N_population*S_PLUS_round2_withinput(2, :), N_population*sqrt(squeeze(P_PLUS_round2_withinput(2, 2, :))));
             errorbar(N_population*S_SMOOTH_round2_withinput(2, :), N_population*sqrt(squeeze(P_SMOOTH_round2_withinput(2, 2, :))));
-            %         errorbar(N_population*S_MINUS_backward(2, :), N_population*sqrt(squeeze(P_MINUS_backward(2, 2, :))));
-            %         errorbar(N_population*S_PLUS_backward(2, :), N_population*sqrt(squeeze(P_PLUS_backward(2, 2, :))));
-            %         errorbar(N_population*S_SMOOTH_backward(2, :), N_population*sqrt(squeeze(P_SMOOTH_backward(2, 2, :))));
+            %             errorbar(N_population*S_MINUS_backward(2, :), N_population*sqrt(squeeze(P_MINUS_backward(2, 2, :))));
+            %             errorbar(N_population*S_PLUS_backward(2, :), N_population*sqrt(squeeze(P_PLUS_backward(2, 2, :))));
+            %             errorbar(N_population*S_SMOOTH_backward(2, :), N_population*sqrt(squeeze(P_SMOOTH_backward(2, 2, :))));
             plot(diff(ConfirmedDeathsSmoothed)./(FatalityRate(2:end)*params.beta), 'linewidth', 2);
             legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2', 'diff(ConfirmedDeathsSmoothed)/(MedRecentFatalityRate*params.beta)');
+            %             legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2', 'MINUS_backward', 'PLUS_backward', 'SMOOTH_backward', 'diff(ConfirmedDeathsSmoothed)/(MedRecentFatalityRate*params.beta)');
             title(CountryAndRegionList(k), 'interpreter', 'none');
             grid
             subplot(313);
@@ -665,9 +684,9 @@ for k = 1 : NumGeoLocations
             errorbar(S_MINUS_round2_withinput(3, :), sqrt(squeeze(P_MINUS_round2_withinput(3, 3, :))));
             errorbar(S_PLUS_round2_withinput(3, :), sqrt(squeeze(P_PLUS_round2_withinput(3, 3, :))));
             errorbar(S_SMOOTH_round2_withinput(3, :), sqrt(squeeze(P_SMOOTH_round2_withinput(3, 3, :))));
-            %         errorbar(S_MINUS_backward(3, :), sqrt(squeeze(P_MINUS_backward(3, 3, :))));
-            %         errorbar(S_PLUS_backward(3, :), sqrt(squeeze(P_PLUS_backward(3, 3, :))));
-            %         errorbar(S_SMOOTH_backward(3, :), sqrt(squeeze(P_SMOOTH_backward(3, 3, :))));
+            %             errorbar(S_MINUS_backward(3, :), sqrt(squeeze(P_MINUS_backward(3, 3, :))));
+            %             errorbar(S_PLUS_backward(3, :), sqrt(squeeze(P_PLUS_backward(3, 3, :))));
+            %             errorbar(S_SMOOTH_backward(3, :), sqrt(squeeze(P_SMOOTH_backward(3, 3, :))));
             legend('MINUS', 'PLUS', 'SMOOTH', 'MINUS2', 'PLUS2', 'SMOOTH2');%, 'MINUS_backward', 'PLUS_backward', 'SMOOTH_backward');
             title(CountryAndRegionList(k), 'interpreter', 'none');
             grid
@@ -682,8 +701,8 @@ for k = 1 : NumGeoLocations
             %     plot(log(J0_zero_control), log(J1_zero_control), 'kx', 'MarkerSize',12);
             %     plot(log(J0_full_control), log(J1_full_control), 'gx', 'MarkerSize',12);
             %     plot(log(J0_opt_control), log(J1_opt_control), 'ro');
-%             plot(J0_zero_control * N_population, J1_zero_control, 'kx', 'MarkerSize',12);
-%             plot(J0_full_control * N_population, J1_full_control, 'gx', 'MarkerSize',12);
+            %             plot(J0_zero_control * N_population, J1_zero_control, 'kx', 'MarkerSize',12);
+            %             plot(J0_full_control * N_population, J1_full_control, 'gx', 'MarkerSize',12);
             %     axis square
             xlabel('Human factor');
             ylabel('NPI cost');

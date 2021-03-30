@@ -24,19 +24,19 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Hard margins on state vectors
-function s_k = StateHardMargins(s_k, params)
+function s_k = StateHardMargins(s_k, params, k)
 s_k(1) = min(1.0, max(params.s_min, s_k(1)));
 s_k(2) = min(1.0, max(params.i_min, s_k(2)));
 s_k(3) = min(params.alpha_max, max(params.alpha_min, s_k(3)));
 end
 
 % Hard margins on observations
-function x_k = ObsHardMargins(x_k, params)
+function x_k = ObsHardMargins(x_k, params, k)
     x_k = max(0, x_k);
 end
 
 % Nonlinear state update
-function [u, s_k_plus_one] = NlinStateUpdate(u, s_k, w_bar, params)
+function [u, s_k_plus_one] = NlinStateUpdate(u, s_k, w_bar, params, k)
 
 s_k_plus_one = zeros(3, 1);
 
@@ -48,7 +48,7 @@ s_k_plus_one(3) = max(params.alpha_min, min(params.alpha_max, s_k(3) + params.dt
 end
 
 % Nonlinear observation update
-function x_k = NlinObsUpdate(u, s_k, v_bar, params)
+function x_k = NlinObsUpdate(u, s_k, v_bar, params, k)
     if(isequal(params.obs_type, 'NEWCASES'))
         x_k = s_k(1) * s_k(2) * s_k(3) + v_bar;
     elseif(isequal(params.obs_type, 'TOTALCASES'))
@@ -59,7 +59,7 @@ function x_k = NlinObsUpdate(u, s_k, v_bar, params)
 end
 
 % State equation Jacobian
-function [A, B] = StateJacobians(u, s_k, w_bar, params)
+function [A, B] = StateJacobians(u, s_k, w_bar, params, k)
 
 A = zeros(3);
 A(1, 1) = 1 - params.dt * s_k(3) * s_k(2);
@@ -76,7 +76,7 @@ B = eye(3);
 end
 
 % Observation equation Jacobian
-function [C, D] = ObsJacobian(u, s_k, v_bar, params)
+function [C, D] = ObsJacobian(u, s_k, v_bar, params, k)
     if(isequal(params.obs_type, 'NEWCASES'))
         C = [s_k(2)*s_k(3), s_k(1)*s_k(3), s_k(1)*s_k(2)];
         D = 1;
@@ -89,7 +89,7 @@ function [C, D] = ObsJacobian(u, s_k, v_bar, params)
 end
 
 % State equation Hessian terms
-function [fs, Cs, fw, Cw] = StateHessianTerms(u, s_k, Pk, w_bar, Qk, params)
+function [fs, Cs, fw, Cw] = StateHessianTerms(u, s_k, Pk, w_bar, Qk, params, k)
 fs = zeros(3, 1);
 Cs = zeros(3);
 
@@ -99,7 +99,7 @@ Cw = zeros(3);
 end
 
 % Observation equation Hessian terms
-function [gs, Gsp, gv, Gvp] = ObsHessianTerms(u, s_k, Pk, v_bar, Rk, params)
+function [gs, Gsp, gv, Gvp] = ObsHessianTerms(u, s_k, Pk, v_bar, Rk, params, k)
 gs = zeros(1);
 Gsp = zeros(1);
 

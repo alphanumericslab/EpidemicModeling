@@ -10,28 +10,28 @@ function [u_opt, u_opt_smooth, S_MINUS, S_PLUS, S_SMOOTH, P_MINUS, P_PLUS, P_SMO
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % % Hard margins on state vectors
-% function s_k = handles.StateHardMargins(s_k, params)
+% function s_k = handles.StateHardMargins(s_k, params, k)
 %
 % % Hard margins on observations
-% function x_k = handles.ObsHardMargins(x_k, params)
+% function x_k = handles.ObsHardMargins(x_k, params, k)
 %
 % % Nonlinear state update
-% function [u, s_k_plus_one] = handles.NlinStateUpdate(u, s_k, w_bar, params)
+% function [u, s_k_plus_one] = handles.NlinStateUpdate(u, s_k, w_bar, params, k)
 %
 % % Nonlinear observation update
-% function x_k = handles.NlinObsUpdate(u, s_k, v_bar, params)
+% function x_k = handles.NlinObsUpdate(u, s_k, v_bar, params, k)
 %
 % % State equation Jacobian
-% function [A, B] = handles.StateJacobians(u, s_k, w_bar, params)
+% function [A, B] = handles.StateJacobians(u, s_k, w_bar, params, k)
 %
 % % Observation equation Jacobian
-% function [C, D] = handles.ObsJacobian(u, s_k, v_bar, params)
+% function [C, D] = handles.ObsJacobian(u, s_k, v_bar, params, k)
 %
 % % State equation Hessian terms
-% function [fs, Cs, fw, Cw] = handles.StateHessianTerms(u, s_k, Pk, w_bar, Qk, params)
+% function [fs, Cs, fw, Cw] = handles.StateHessianTerms(u, s_k, Pk, w_bar, Qk, params, k)
 %
 % % Observation equation Hessian terms
-% function [gs, Gsp, gv, Gvp] = handles.ObsHessianTerms(u, s_k, Pk, v_bar, Rk, params)
+% function [gs, Gsp, gv, Gvp] = handles.ObsHessianTerms(u, s_k, Pk, v_bar, Rk, params, k)
 %
 %
 % Reza Sameni
@@ -106,17 +106,17 @@ for k = 1 : T
         gv = zeros(n, 1);
         Gvp = zeros(n);
     elseif(order == 2)
-        [gs, Gsp, gv, Gvp] = handles.ObsHessianTerms(u(:, k), sk_minus, Pk_minus, v_bar, R, params);
+        [gs, Gsp, gv, Gvp] = handles.ObsHessianTerms(u(:, k), sk_minus, Pk_minus, v_bar, R, params, k);
     else
         error('Undefined order');
     end
     
     % Calculate s(k|k) and P(k|k)
-    [Ck_minus, Dk_minus] = handles.ObsJacobian(u(:, k), sk_minus, v_bar, params);
-    xk_minus = handles.NlinObsUpdate(u(:, k), sk_minus, v_bar, params) + gs + gv;
+    [Ck_minus, Dk_minus] = handles.ObsJacobian(u(:, k), sk_minus, v_bar, params, k);
+    xk_minus = handles.NlinObsUpdate(u(:, k), sk_minus, v_bar, params, k) + gs + gv;
     
     % Apply hard margins on observations
-    xk_minus = handles.ObsHardMargins(xk_minus, params);
+    xk_minus = handles.ObsHardMargins(xk_minus, params, k);
     
     % time update if observation is valid
     if(~isnan(x(:, k)))
@@ -138,7 +138,7 @@ for k = 1 : T
     Pk_plus = (Pk_plus + Pk_plus')/2.0;
     
     % Apply hard margins on states
-    sk_plus = handles.StateHardMargins(sk_plus, params);
+    sk_plus = handles.StateHardMargins(sk_plus, params, k);
     
     if(order == 1)
         fs = zeros(m, 1);
@@ -146,22 +146,22 @@ for k = 1 : T
         fw = zeros(m, 1);
         Fwp = zeros(m);
     elseif(order == 2)
-        [fs, Fsp, fw, Fwp] = handles.StateHessianTerms(u(:, k), sk_plus, Pk_plus, w_bar, Q, params);
+        [fs, Fsp, fw, Fwp] = handles.StateHessianTerms(u(:, k), sk_plus, Pk_plus, w_bar, Q, params, k);
     else
         error('Undefined order');
     end
     
     % Calculate s(k+1|k) and P(k+1|k) for k+1
-    [u_opt(:, k), sk_minus] = handles.NlinStateUpdate(u(:, k), sk_plus, w_bar, params); % State update
+    [u_opt(:, k), sk_minus] = handles.NlinStateUpdate(u(:, k), sk_plus, w_bar, params, k); % State update
     sk_minus = sk_minus + fs + fw; % Add second order terms (is available)
-    [Ak_plus, Bk_plus] = handles.StateJacobians(u(:, k), sk_plus, w_bar, params);
+    [Ak_plus, Bk_plus] = handles.StateJacobians(u(:, k), sk_plus, w_bar, params, k);
     Pk_minus = (Ak_plus * Pk_plus * Ak_plus') + (Bk_plus * Q(:, :, k) * Bk_plus') + Fsp + Fwp; % Cov. matrix update
     
     % Trivial condition added to guarantee numerical stability
     Pk_minus = (Pk_minus + Pk_minus')/2.0;
     
     % Apply hard margins on states
-    sk_minus = handles.StateHardMargins(sk_minus, params);
+    sk_minus = handles.StateHardMargins(sk_minus, params, k);
     
     % Store results of s_plus
     S_PLUS(:, k) = sk_plus;
@@ -203,7 +203,7 @@ end
 
 for k = T - 1 : -1 : 1
     sk_plus = S_PLUS(:, k);
-    Ak_plus = handles.StateJacobians(u(:, k), sk_plus, w_bar, params);
+    Ak_plus = handles.StateJacobians(u(:, k), sk_plus, w_bar, params, k);
     
     % Check to make sure that P_MINUS is not ill-conditioned
     pmns = P_MINUS(:, :, k + 1);
@@ -218,15 +218,15 @@ for k = T - 1 : -1 : 1
     S_SMOOTH(:, k) = S_PLUS(:, k) + J * (S_SMOOTH(:, k + 1) - S_MINUS(:, k + 1));
     
     % Apply hard margins on states
-    S_SMOOTH(:, k) = handles.StateHardMargins(S_SMOOTH(:, k), params);
+    S_SMOOTH(:, k) = handles.StateHardMargins(S_SMOOTH(:, k), params, k);
     
     P_SMOOTH(:, :, k) = P_PLUS(:, :, k) - J * (P_MINUS(:, :, k+1) - P_SMOOTH(:, :, k+1)) * J';
     
     % Trivial condition added to guarantee numerical stability
     P_SMOOTH(:, :, k) = (P_SMOOTH(:, :, k) + P_SMOOTH(:, :, k)')/2.0;
     
-    % rerun the state equation for the optimal input
-    [u_opt_smooth(:, k), ~] = handles.NlinStateUpdate(u(:, k), S_SMOOTH(:, k), w_bar, params);
+    % rerun the state equation to find the optimal input
+    [u_opt_smooth(:, k), ~] = handles.NlinStateUpdate(u(:, k), S_SMOOTH(:, k), w_bar, params, k);
 end
 
 % Squeeze excess dimensions if applicable
