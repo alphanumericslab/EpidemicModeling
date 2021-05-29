@@ -1,5 +1,5 @@
-# Mathematical Modeling of Epidemic Diseases
-## A Case Study of the COVID-19 Coronavirus
+# Open-access codes for the mathematical modeling of epidemic diseases
+## A case-study of the COVID-19 coronavirus
 <!-- <p align="center"> -->
   <img src="Figures/SEIRPModel.png" width="400" alt="Figures/SEIRPModel.png">
 <!-- </p> -->
