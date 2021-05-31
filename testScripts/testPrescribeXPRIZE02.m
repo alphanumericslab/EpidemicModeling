@@ -9,12 +9,12 @@ close all;
 clc
 addpath('../Tools/');
 
-START_DATE_TRAIN = "2020-01-01"; % start time
-START_DATE_REGRESSION = "2020-01-15"; % start NPI model regression date
-END_DATE_TRAIN = "2021-02-07"; % end time
-END_DATE_PREDICT_PRESCRIBE = "2021-06-07"; % end time
-% LATEST_DATA_FILE = './../covid-policy-tracker/data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
-LATEST_DATA_FILE = '../xprize-sample-data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
+START_DATE_TRAIN = "2020-03-15"; % start time
+START_DATE_REGRESSION = "2020-03-15"; % start NPI model regression date
+END_DATE_TRAIN = "2021-05-29"; % end time
+END_DATE_PREDICT_PRESCRIBE = "2021-08-29"; % end time
+LATEST_DATA_FILE = './../../covid-policy-tracker/data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
+% LATEST_DATA_FILE = '../xprize-sample-data/OxCGRT_latest.csv'; % The historic data file cloned from: https://github.com/OxCGRT/covid-policy-tracker/tree/master/data
 GEO_FILE = "../xprize-sample-data/countries_regions.csv"; % countries and regions to include
 % GEO_FILE = "../xprize-sample-data/countries_regions_short_list.csv"; % countries and regions to include
 POPULATION_FILE = "../xprize-sample-data/populations.csv"; % country and regional populations

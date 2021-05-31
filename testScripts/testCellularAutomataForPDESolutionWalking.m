@@ -74,8 +74,8 @@ for t = 1 : NT - 1
     C2(X2(1), X2(2)) = C2(X2(1), X2(2)) + E2; % subject 2
 
     % Update subject positions for t + 1
-    X1 = max(1, min(Lx, round(X1 + sd1 * (rand(2, 1) - 0.5))));              
-    X2 = max(1, min(Ly, round(X2 + sd2 * (rand(2, 1) - 0.5))));
+    X1 = max(1, min(Lx, round(X1 + sd1 * randn(2, 1))));              
+    X2 = max(1, min(Ly, round(X2 + sd2 * randn(2, 1))));
     
     % 4-point neighborhood update
     C1(i, j) = (1 - 2 * alpha_x - 2 * alpha_y) * C1(i, j) + alpha_x * C1(i - 1, j) + alpha_x * C1(i + 1, j) + alpha_y * C1(i, j - 1) + alpha_y * C1(i, j + 1);
