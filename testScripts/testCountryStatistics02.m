@@ -3,10 +3,10 @@ close all;
 clc;
 
 
-AllCases = importdata('./../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv');
-AllDeaths = importdata('./../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv');
+AllCases = importdata('./../../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv');
+AllDeaths = importdata('./../../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv');
 
-CountryList = {'US', 'Brazil', 'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Turkey', 'India', 'Iran', 'Peru', 'Canada', 'China'};
+CountryList = {'US'}%, 'Brazil', 'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Turkey', 'India', 'Iran', 'Peru', 'Canada', 'China'};
 ttl = 'Global COVID-19 mortality rate per official case reports, by 26 May 2020';
 
 % CountryList = {'Russia', 'Spain', 'United Kingdom', 'Italy', 'France', 'Germany', 'Belgium', 'Netherlands', 'Belarus', 'Sweden', 'Portugal', 'Switzerland'};

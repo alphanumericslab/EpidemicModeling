@@ -91,9 +91,43 @@ NumNPI = length(included_IP); % Number of NPI
 TrainedModelParams = [{'CountryName'}, {'RegionName'}, {'N_population'}, {'reg_coef_b'}, {'reg_coef_a'}, {'reg_coef_b2'}, {'reg_coef_a2'}];
 
 for k = 1 : NumGeoLocations
-    if(~isempty(find(SelectedGeoIDs == CountryAndRegionList(k), 1)) && isequal(CountryAndRegionList(k), "India ")) % make sure the current country/region is among the ones to be processed
-        % 1) READ AND CLEAN THE DATA
+    if(~isempty(find(SelectedGeoIDs == CountryAndRegionList(k), 1)) && isequal(CountryAndRegionList(k), "United States ")) % make sure the current country/region is among the ones to be processed
         disp([num2str(k) '- ' char(CountryAndRegionList(k))]);
+        
+        % 0) READ UP TO THE END OF THE DATA (USED ONLY FOR VALIDATION, NOT PREDICTION)
+        geoid_all_row_indexes_ENTIRE = AllGeoIDs == CountryAndRegionList(k) & all_data.Date >= start_train_date_number & all_data.Date <= end_predict_presscribe_date_number; % fetch all rows corresponding to the country/region from start date to end date
+        ConfirmedCases_ENTIRE = all_data.ConfirmedCases(geoid_all_row_indexes_ENTIRE); % Confirmed cases
+        %ConfirmedDeaths_ENTIRE = all_data.ConfirmedDeaths(geoid_all_row_indexes_ENTIRE); % Confirmed deaths
+        NewCases_ENTIRE = diff([ConfirmedCases_ENTIRE(1) ; ConfirmedCases_ENTIRE]); % calculate the new daily cases
+        NewCases_ENTIRE(NewCases_ENTIRE < 0) = 0;
+        if(length(NewCases_ENTIRE) < 2)
+            warning(strcat("Insufficient data for ", CountryAndRegionList(k), ". Skipping the country/region."));
+            continue;
+        end
+        % Replace the last nan with the last valid number
+        NewCasesRefined_ENTIRE = NewCases_ENTIRE;
+        if(isnan(NewCases_ENTIRE(end))) % Just fill the last missing date (if any) with the previous day
+            last_number = find(not(isnan(NewCases_ENTIRE)), 1, 'last');
+            NewCasesRefined_ENTIRE(end) = NewCasesRefined_ENTIRE(last_number);
+        end
+        NewCasesRefined_ENTIRE(isnan(NewCasesRefined_ENTIRE)) = 0; % replace any remaining nans with 0
+        NewCasesSmoothed_ENTIRE = filter(ones(1, SmoothingWinLen), SmoothingWinLen, NewCasesRefined_ENTIRE); % causal smoothed; used for processing
+        ConfirmedCasesSmoothed_ENTIRE = cumsum(NewCasesSmoothed_ENTIRE);
+        % Intervention plans
+        InterventionPlans_ENTIRE = all_data{geoid_all_row_indexes_ENTIRE, included_IP}; % Region/Country intervention plans
+        NumNPIdays_ENTIRE = size(InterventionPlans_ENTIRE, 1); % Number of days with NPI
+        
+        % Preprocess the N/A IPs
+        for j = 1 : NumNPI % Replace all N/A IP with previous IP
+            for i = 2 : NumNPIdays_ENTIRE
+                if(isnan(InterventionPlans_ENTIRE(i, j)) && not(isnan(InterventionPlans_ENTIRE(i - 1, j))))
+                    InterventionPlans_ENTIRE(i, j) = InterventionPlans_ENTIRE(i - 1, j);
+                end
+            end
+        end
+        InterventionPlans_ENTIRE(isnan(InterventionPlans_ENTIRE)) = 0; % Replace any remaining N/A IP with no IP
+        
+        % 1) READ AND CLEAN THE DATA
         geoid_all_row_indexes = AllGeoIDs == CountryAndRegionList(k) & all_data.Date >= start_train_date_number & all_data.Date <= end_train_date_number; % fetch all rows corresponding to the country/region from start date to end date
         CountryName = all_data.CountryName(find(geoid_all_row_indexes == 1, 1, 'first')); % The current country name
         RegionName = all_data.RegionName(find(geoid_all_row_indexes == 1, 1, 'first')); % The current region name
@@ -330,6 +364,11 @@ for k = 1 : NumGeoLocations
                 observations = [NewCasesSmoothedNormalized(:)', nan(1, num_forecast_days)];
             end
             
+            % Z) Forecast with actual NPIs from the ground-truth data (used only to evaluate the estimator)
+            control_input_ENTIRE = InterventionPlans_ENTIRE'; % The second round works with real inputs
+            %s_init = [(N_population - I0)/N_population ; I0/N_population ; S_SMOOTH_round1_noinput(3, 1) ; S_SMOOTH_round1_noinput(4, 1) ; S_SMOOTH_round1_noinput(5, 1) ; S_SMOOTH_round1_noinput(6, 1)]; % initial state vector
+            [~, actual_control_input, ~, S_PLUS_actualinput, S_SMOOTH_actualinput, ~, ~, ~, ~, ~, ~] = SIAlphaModelEKF(control_input_ENTIRE, observations, params, s_init, Ps_init, s_final, Ps_final, w_bar, v_bar, Q_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, 1);
+
             % A) Forecast/prescription phase with fixed input (3-state EKF)
             IP = InterventionPlans';
             IP_last = IP(:, end);
@@ -341,9 +380,9 @@ for k = 1 : NumGeoLocations
             s_historic = S_SMOOTH_fixedinput(1, 1 : NumNPIdays);
             i_historic = S_SMOOTH_fixedinput(2, 1 : NumNPIdays);
             alpha_historic = S_SMOOTH_fixedinput(3, 1 : NumNPIdays);
-%             s_historic = S_PLUS_fixedinput(1, 1 : NumNPIdays);
-%             i_historic = S_PLUS_fixedinput(2, 1 : NumNPIdays);
-%             alpha_historic = S_PLUS_fixedinput(3, 1 : NumNPIdays);
+            %             s_historic = S_PLUS_fixedinput(1, 1 : NumNPIdays);
+            %             i_historic = S_PLUS_fixedinput(2, 1 : NumNPIdays);
+            %             alpha_historic = S_PLUS_fixedinput(3, 1 : NumNPIdays);
             
             [s_fixed, i_fixed, alpha_fixed] = SIalpha_Controlled(fixed_control_input, s_historic(end), i_historic(end), alpha_historic(end), NPI_MAXES, params.alpha_min, params.alpha_max, params.gamma, params.a, params.b, params.beta, s_noise_std, i_noise_std, alpha_noise_std, num_forecast_days, params.dt);
             s = [s_historic, s_fixed];
@@ -398,7 +437,7 @@ for k = 1 : NumGeoLocations
                     s_final(5) = 0; % zero costates
                     s_final(6) = 0; % zero costates
                     Ps_final = nan(6);
-%                     Ps_final(1:3, 1:3) = nan; % don't touch these end-point states during smoothing
+                    %                     Ps_final(1:3, 1:3) = nan; % don't touch these end-point states during smoothing
                     Ps_final(4, 4) = 1e-8; % zero costates
                     Ps_final(5, 5) = 1e-8; % zero costates
                     Ps_final(6, 6) = 1e-8; % zero costates
@@ -419,9 +458,9 @@ for k = 1 : NumGeoLocations
                 control_input = [IP, nan(NumNPI, num_forecast_days)]; % The second round works with real inputs
                 %s_init = [(N_population - I0)/N_population ; I0/N_population ; S_SMOOTH_round1_noinput(3, 1) ; S_SMOOTH_round1_noinput(4, 1) ; S_SMOOTH_round1_noinput(5, 1) ; S_SMOOTH_round1_noinput(6, 1)]; % initial state vector
                 [~, opt_control_input_smooth, S_MINUS_optinput, S_PLUS_optinput, S_SMOOTH_optinput, P_MINUS_optinput, P_PLUS_optinput, P_SMOOTH_optinput, ~, ~, ~] = SIAlphaModelEKFOptControlled(control_input, observations, params, ss_init, PPs_init, s_final, Ps_final, w_bar, v_bar, QQ_w, R_v, beta_ekf, gamma_ekf, inv_monitor_len_ekf, 1);
-%                 s_opt_control_ALL_EPSILON(:, :, ll) = S_PLUS_optinput;
-%                 S_MINUS_optinput_ALL_EPSILON(:, :, ll) = S_MINUS_optinput;
-%                 S_SMOOTH_optinput_ALL_EPSILON(:, :, ll) = S_SMOOTH_optinput;
+                %                 s_opt_control_ALL_EPSILON(:, :, ll) = S_PLUS_optinput;
+                %                 S_MINUS_optinput_ALL_EPSILON(:, :, ll) = S_MINUS_optinput;
+                %                 S_SMOOTH_optinput_ALL_EPSILON(:, :, ll) = S_SMOOTH_optinput;
                 % Backward filtering (under test)
                 % % %                 s_final = [S_PLUS_optinput(1, end), S_PLUS_optinput(2, end), S_PLUS_optinput(3, end), 0, 0, 0];
                 % % %                 Ps_final = diag([P_SMOOTH_optinput(1, 1, end), P_SMOOTH_optinput(2, 2, end), P_SMOOTH_optinput(3, 3, end), 1e-8, 1e-8, 1e-8]);
@@ -533,7 +572,7 @@ for k = 1 : NumGeoLocations
                     errorbar(S_MINUS_optinput(mm, :), sqrt(squeeze(P_MINUS_optinput(mm, mm, :))));
                     hold on
                     errorbar(S_PLUS_optinput(mm, :), sqrt(squeeze(P_PLUS_optinput(mm, mm, :))));
-                    errorbar(S_SMOOTH_optinput(mm, :), sqrt(squeeze(P_SMOOTH_optinput(mm, mm, :))));
+                    errorbar(S_SMOOTH_optinput(mm, :), sqrt(max(0, squeeze(P_SMOOTH_optinput(mm, mm, :)))));
                     legend('S_MINUS', 'S_PLUS', 'S_SMOOTH');
                     grid
                     if(mm == 1)
@@ -572,6 +611,7 @@ for k = 1 : NumGeoLocations
             grid
             legend('new cases - no NPI', 'new cases - full NPI', 'new cases - fixed NPI', 'new cases - optimal NPI');
             title(CountryAndRegionList(k), 'interpreter', 'none');
+            
             subplot(212);
             plot(S_PLUS_zeroinput(3, :));
             hold on
@@ -586,26 +626,72 @@ for k = 1 : NumGeoLocations
                 is_on_pareto_front(ii) = sum(J0_opt_control < J0_opt_control(ii) & J1_opt_control < J1_opt_control(ii)) == 0;
             end
             is_on_pareto_front = logical(is_on_pareto_front);
-%             [~, I_opt] = min(J0_opt_control.^2 + J1_opt_control.^2);
+            %             [~, I_opt] = min(J0_opt_control.^2 + J1_opt_control.^2);
             NewCaseEst_ALL_EPSILON = s_opt_control_ALL_EPSILON.*i_opt_control_ALL_EPSILON.*alpha_opt_control_ALL_EPSILON;
-            figure
-            plot(N_population * S_PLUS_zeroinput(1, :).*S_PLUS_zeroinput(2, :).*S_PLUS_zeroinput(3, :), 'linewidth', 2);
-            hold on
-            plot(N_population * S_PLUS_fullinput(1, :).*S_PLUS_fullinput(2, :).*S_PLUS_fullinput(3, :), 'linewidth', 2);
-            plot(N_population * S_PLUS_fixedinput(1, :).*S_PLUS_fixedinput(2, :).*S_PLUS_fixedinput(3, :), 'linewidth', 2);
-%             plot(N_population * NewCaseEst_ALL_EPSILON(I_opt, :), 'k', 'linewidth', 2);
-            plot(N_population * NewCaseEst_ALL_EPSILON', 'color', 0.6 * ones(1, 3));
-            grid
-            legend('new cases - no NPI', 'new cases - full NPI', 'new cases - fixed NPI', 'new cases - optimal NPI');%, 'new cases - \epsilon sweep');
-            title(CountryAndRegionList(k), 'interpreter', 'none');
-            xlabel('Days since 1 Jan 2020');
-            ylabel('Number of daily new cases');
-            set(gca, 'fontsize', 14)
-            aa = axis;
-            aa(2) = 500;
-            axis(aa);
             
-            %             set(gca, 'YScale', 'log')
+            
+            [~, I_opt] = min((J0_opt_control/max(J0_opt_control)).^2 + (J1_opt_control/max(J1_opt_control)).^2);
+            
+            if 1
+                figure
+                hold on
+                plot(0 : length(NewCasesSmoothed_ENTIRE) - 1, NewCasesSmoothed_ENTIRE, 'linewidth', 2);
+                plot(0 : length(S_SMOOTH_actualinput(1, :)) - 1, N_population * S_SMOOTH_actualinput(1, :).*S_SMOOTH_actualinput(2, :).*S_SMOOTH_actualinput(3, :), 'linewidth', 2);
+                plot(0 : length(S_PLUS_zeroinput(1, :)) - 1, N_population * S_PLUS_zeroinput(1, :).*S_PLUS_zeroinput(2, :).*S_PLUS_zeroinput(3, :), 'linewidth', 2);
+                plot(0 : length(S_PLUS_fullinput(1, :)) - 1, N_population * S_PLUS_fullinput(1, :).*S_PLUS_fullinput(2, :).*S_PLUS_fullinput(3, :), 'linewidth', 2);
+                plot(0 : length(S_PLUS_fixedinput(1, :)) - 1, N_population * S_PLUS_fixedinput(1, :).*S_PLUS_fixedinput(2, :).*S_PLUS_fixedinput(3, :), 'linewidth', 2);
+                plot(0 : length(NewCaseEst_ALL_EPSILON(I_opt, :)) - 1, N_population * NewCaseEst_ALL_EPSILON(I_opt, :), 'linewidth', 2);
+                %             plot(N_population * NewCaseEst_ALL_EPSILON(I_opt, :), 'k', 'linewidth', 2);
+                plot(0 : size(NewCaseEst_ALL_EPSILON, 2) - 1, N_population * NewCaseEst_ALL_EPSILON', 'color', 0.6 * ones(1, 3));
+                grid
+                legend('Ground truth', 'Ground truth estimate', 'No NPI', 'Full NPI', 'Fixed NPI', 'Optimal NPI', 'Random NPI');%, 'new cases - \epsilon sweep');
+                %Returns handles to the patch and line objects
+                chi = get(gca, 'Children');
+                %Reverse the stacking order so that the patch overlays the line
+                set(gca, 'Children',flipud(chi))
+                %             title('Number of new cases for different NPI scenarios')
+                title(strcat("Number of new cases for different NPI scenarios for ", CountryAndRegionList(k)), 'interpreter', 'none')
+                xlabel(strcat("Days since ", start_train_date_str));
+                ylabel('Number of new cases')
+                set(gca, 'fontsize', 14)
+                set(gca, 'YScale', 'log')
+                aa = axis;
+                aa(3) = 1;
+                axis(aa);
+%                 line([num_regression_days, num_regression_days], aa(3), aa(4), 'Color', 'k', 'LineStyle','--', 'linewidth', 3)
+                
+                figure
+                hold on
+                plot(0 : length(ConfirmedCasesSmoothed_ENTIRE) - 1, ConfirmedCasesSmoothed_ENTIRE, 'linewidth', 2);
+                plot(0 : length(S_SMOOTH_actualinput(1, :)) - 1, N_population * (1.0 - S_SMOOTH_actualinput(1, :)), 'linewidth', 2);
+                plot(0 : length(S_PLUS_zeroinput(1, :)) - 1, N_population * (1.0 - S_PLUS_zeroinput(1, :)), 'linewidth', 2);
+                plot(0 : length(S_PLUS_fullinput(1, :)) - 1, N_population * (1.0 - S_PLUS_fullinput(1, :)), 'linewidth', 2);
+                plot(0 : length(S_PLUS_fixedinput(1, :)) - 1, N_population * (1.0 - S_PLUS_fixedinput(1, :)), 'linewidth', 2);
+                plot(0 : length(s_opt_control_ALL_EPSILON(I_opt, :)) - 1, N_population * (1.0 - s_opt_control_ALL_EPSILON(I_opt, :)), 'linewidth', 2);
+                %             plot(N_population * NewCaseEst_ALL_EPSILON(I_opt, :), 'k', 'linewidth', 2);
+                plot(0 : size(s_opt_control_ALL_EPSILON, 2) - 1, N_population * (1.0 - s_opt_control_ALL_EPSILON)', 'color', 0.6 * ones(1, 3));
+                grid
+                legend('Ground truth', 'Ground truth estimate', 'No NPI', 'Full NPI', 'Fixed NPI', 'Optimal NPI', 'Random NPI');%, 'new cases - \epsilon sweep');
+                %Returns handles to the patch and line objects
+                chi = get(gca, 'Children');
+                %Reverse the stacking order so that the patch overlays the line
+                set(gca, 'Children',flipud(chi))
+                title(strcat("Number of total cases for different NPI scenarios for ", CountryAndRegionList(k)), 'interpreter', 'none')
+                %             plot(N_population * S_PLUS_zeroinput(1, :).*S_PLUS_zeroinput(2, :).*S_PLUS_zeroinput(3, :), 'linewidth', 2);
+                %             plot(N_population * S_PLUS_fullinput(1, :).*S_PLUS_fullinput(2, :).*S_PLUS_fullinput(3, :), 'linewidth', 2);
+                %             plot(N_population * S_PLUS_fixedinput(1, :).*S_PLUS_fixedinput(2, :).*S_PLUS_fixedinput(3, :), 'linewidth', 2);
+                %             legend('new cases - optimal NPI', 'new cases - no NPI', 'new cases - full NPI', 'new cases - fixed NPI');%, 'new cases - \epsilon sweep');
+                %title(CountryAndRegionList(k), 'interpreter', 'none');
+                xlabel(strcat("Days since ", start_train_date_str));
+                ylabel('Number of total cases')
+                %             ylabel('Number of daily new cases');
+                set(gca, 'fontsize', 14)
+                set(gca, 'YScale', 'log')
+                aa = axis;
+                aa(3) = 1;
+                axis(aa);
+%                 line([num_regression_days, num_regression_days], aa(3), aa(4), 'Color', 'k', 'LineStyle','--', 'linewidth', 3)
+            end
             
             figure
             subplot(411)
@@ -638,6 +724,37 @@ for k = 1 : NumGeoLocations
             subplot(414);
             plot(InterventionPlans);
             grid
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            if 1
+                figure
+                plot(N_population * observations)
+                if(isequal(params.obs_type, 'TOTALCASES'))
+                    hold on
+                    plot(ConfirmedCasesSmoothed);
+                    plot(N_population * (1 - S_PLUS_round2_withinput(1, :)));
+                    plot(N_population * (1 - S_PLUS_round1_noinput(1, :)));
+                    grid
+                    legend('Confirmed Total Cases (Raw)', 'Confirmed Total Cases (Smoothed)', 'Estimated Total Cases', 'NO INPUT');
+                elseif(isequal(params.obs_type, 'NEWCASES'))
+                    hold on
+                    %plot(NewCasesSmoothed);
+                    bar(NewCasesRefined)
+                    plot(N_population * S_PLUS_round2_withinput(1, :) .* S_PLUS_round2_withinput(2, :) .* S_PLUS_round2_withinput(3, :));
+                    plot(N_population * S_PLUS_round1_noinput(1, :) .* S_PLUS_round1_noinput(2, :) .* S_PLUS_round1_noinput(3, :));
+                    grid
+                    legend('Confirmed New Cases (Smoothed)', 'Confirmed New Cases (Raw)', 'Estimated New Cases', 'NO INPUT');
+                end
+            end
             
             if(0)
                 figure
@@ -748,7 +865,7 @@ for k = 1 : NumGeoLocations
             set(gca, 'fontsize', 16)
             set(gca, 'box', 'on')
             
-            if(0)
+            if 0
                 figure
                 subplot(311);
                 errorbar(S_MINUS_round1_noinput(4, :), sqrt(squeeze(P_MINUS_round1_noinput(4, 4, :))));
