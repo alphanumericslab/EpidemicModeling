@@ -1,5 +1,16 @@
 # API contracts
 
+## Function help
+
+In Python, use `help(epidemic_modeling.seirp)` after importing the package.
+Use `help()` on a function from its module for helpers that are not exported
+at package level. In a notebook, `seirp?` displays the same help.
+
+In MATLAB, run `setup_paths` and then `help seirp` or `doc seirp`. Function
+headers describe inputs, outputs, units, and sample conventions. Comments
+inside the functions explain the main numerical steps.
+
+
 Author: **Reza Sameni · Emory University**.
 
 ## Shared numerical conventions
@@ -110,8 +121,7 @@ For the upgraded pipeline, model bundles use shared JSON schema version 1.
 #### `seirp`
 
 ```python
-seirp(alpha_e, alpha_i, kappa, rho, beta, mu, gamma,
-          s0, e0, i0, r0, p0, duration, dt)
+seirp(alpha_e, alpha_i, kappa, rho, beta, mu, gamma, s0, e0, i0, r0, p0, duration, dt)
 ```
 
 Solve the SEIRP model using forward Euler.
@@ -120,6 +130,9 @@ Parameters
 ----------
 alpha_e, alpha_i, kappa, rho, beta, mu, gamma : float or array_like
     Nonnegative rates per time unit, scalar or at least K-1 samples.
+    alpha_e/alpha_i describe transmission from exposed/infected people;
+    kappa moves E to I; rho/beta move E/I to R; mu moves I to P;
+    gamma returns R to S.
 s0, e0, i0, r0, p0 : float
     Initial population fractions (susceptible, exposed, infected,
     recovered, and passed/deceased).
@@ -140,9 +153,7 @@ The sum of the compartments is conserved up to floating-point precision.
 #### `seirp_saturated_resource`
 
 ```python
-seirp_saturated_resource(alpha_e, alpha_i, kappa, rho, gamma,
-                             s0, e0, i0, r0, p0, duration, dt,
-                             beta_0, beta_s, mu_0, mu_s, sigma, i_0)
+seirp_saturated_resource(alpha_e, alpha_i, kappa, rho, gamma, s0, e0, i0, r0, p0, duration, dt, beta_0, beta_s, mu_0, mu_s, sigma, i_0)
 ```
 
 Solve SEIRP with a smooth transition to saturated healthcare rates.
@@ -166,9 +177,7 @@ is clipped to [0, 1], as in the original MATLAB solver.
 #### `si_alpha_controlled`
 
 ```python
-si_alpha_controlled(u, s0, i0, alpha0, u_max, alpha_min, alpha_max,
-                        gamma, a, b, beta, s_noise_std, i_noise_std,
-                        alpha_noise_std, count, dt, *, rng=None, noise=None)
+si_alpha_controlled(u, s0, i0, alpha0, u_max, alpha_min, alpha_max, gamma, a, b, beta, s_noise_std, i_noise_std, alpha_noise_std, count, dt, *, rng=None, noise=None)
 ```
 
 Integrate NPI-driven SI-alpha dynamics, returning post-update samples.
@@ -192,6 +201,9 @@ exp_model(params, t)
 
 Evaluate ``amplitude * exp(growth * t)`` for a two-element parameter vector.
 
+params contains [amplitude, growth]. t contains sample times in the same
+time unit as growth. Returns an array with the shape of t.
+
 #### `rt_exp_fit_gen_ratios`
 
 ```python
@@ -204,6 +216,10 @@ Returns (rt, growth, rt_smoothed, growth_smoothed), each length N.
 growth[:generation_period] = 0; subsequent growth is log case ratio
 divided by generation_period. rt = exp(growth*time_unit). Zero counts
 propagate IEEE NaN/Inf, preserving the original definition.
+
+new_cases is a length-N nonnegative series. wlen is the averaging
+window in samples; generation_period is the lag in samples. time_unit
+sets the interval used to turn the growth estimate into a growth factor.
 
 #### `rt_exp_fit_log_lin_reg`
 
@@ -219,6 +235,10 @@ have rt=amplitude=exp_fit=1 and growth=0, matching MATLAB. rt=exp(slope),
 growth=slope/time_unit, and exp_fit=amplitude*rt (one-step forecast).
 Positive cases are required; zeros produce undefined log regressions.
 
+new_cases is a length-N daily case series. wlen is the fitting window
+in samples; time_unit is the time between samples. All four returned
+arrays have length N. causal=True uses only current and earlier cases.
+
 #### `rt_exp_fit_nonlin_ls`
 
 ```python
@@ -233,15 +253,16 @@ unusual scaling: growth = fitted_rate/time_unit and rt=exp(fitted_rate).
 Causal unfitted amplitudes are delayed raw cases; centered ends retain
 raw cases. Windows with zeros use the current count and zero growth.
 
+new_cases is a length-N nonnegative case series. wlen is the fitting
+window in samples. Returns four length-N arrays. Use causal=True for
+forecasts that must not use later observations.
+
 ### kalman
 
 #### `generic_extended_kalman_filter`
 
 ```python
-generic_extended_kalman_filter(u, x, handles, params, s_init, ps_init,
-        s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1., gamma=1.,
-        inv_monitor_len=21, order=1, *, covariance_update='joseph',
-        switching_rho_epsilon=True)
+generic_extended_kalman_filter(u, x, handles, params, s_init, ps_init, s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1.0, gamma=1.0, inv_monitor_len=21, order=1, *, covariance_update='joseph', switching_rho_epsilon=True)
 ```
 
 Run an EKF and fixed-interval Rauch--Tung--Striebel smoother.
@@ -291,39 +312,71 @@ update is used only by the two older dedicated filter ports.
 #### `si_alpha_model_ekf`
 
 ```python
-si_alpha_model_ekf(u,x,params,s_init,ps_init,s_final,ps_final,w_bar,v_bar,q_w,r_v,beta=1,gamma=1,inv_monitor_len=21,order=1)
+si_alpha_model_ekf(u, x, params, s_init, ps_init, s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1, gamma=1, inv_monitor_len=21, order=1)
 ```
 
 Estimate three SI-alpha states; inputs/outputs follow the generic EKF contract.
 
+The state is [susceptible fraction, infected fraction, contact rate].
+u is interventions-by-time; x is observations-by-time and contains
+population fractions, not raw case counts. params is a dict or object
+with the fields from default_si_params. Select NEWCASES for incidence
+or TOTALCASES for cumulative cases using params.obs_type.
+
+Initial/final means have length 3 and covariances have shape (3, 3).
+NaN observations skip correction; NaN final entries impose no boundary.
+Returns filter_result with filtered and smoothed states, covariances,
+controls, gains, and innovations. See generic_extended_kalman_filter
+for noise inputs and adaptation settings.
+
 #### `si_alpha_model_ekf_opt_controlled`
 
 ```python
-si_alpha_model_ekf_opt_controlled(u,x,params,s_init,ps_init,s_final,ps_final,w_bar,v_bar,q_w,r_v,beta=1,gamma=1,inv_monitor_len=21,order=1)
+si_alpha_model_ekf_opt_controlled(u, x, params, s_init, ps_init, s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1, gamma=1, inv_monitor_len=21, order=1)
 ```
 
 Estimate six SI-alpha/costate states and fill NaN controls using phi > 0.
 
+The six states are susceptible fraction, infected fraction, contact
+rate, and three costates. Means have length 6; covariances are (6, 6).
+u is interventions-by-time; NaN controls request a bound selected by
+the switching function. Finite controls are used as supplied.
+
+params adds epsilon, intervention costs w, and switching slope sigma
+to default_si_params. Returns the same eleven-array filter_result as
+generic_extended_kalman_filter. Observations use population fractions.
+NaN final mean/covariance entries leave that boundary unconstrained.
+
 #### `si_alpha_model_backward_ekf`
 
 ```python
-si_alpha_model_backward_ekf(u,x,params,s_init,ps_init,s_final,ps_final,w_bar,v_bar,q_w,r_v,beta=1,gamma=1,inv_monitor_len=21,order=1)
+si_alpha_model_backward_ekf(u, x, params, s_init, ps_init, s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1, gamma=1, inv_monitor_len=21, order=1)
 ```
 
 Run the three-state reverse-time SI filter and return chronological arrays.
 
+Inputs use the same units, shapes, and parameter fields as
+si_alpha_model_ekf. Supply samples in chronological order; this function
+reverses them internally. The initial mean/covariance starts the
+reverse-time pass at the latest sample. Returned arrays are chronological.
+
 #### `si_alpha_model_backward_ekf_opt_controlled`
 
 ```python
-si_alpha_model_backward_ekf_opt_controlled(u,x,params,s_init,ps_init,s_final,ps_final,w_bar,v_bar,q_w,r_v,beta=1,gamma=1,inv_monitor_len=21,order=1)
+si_alpha_model_backward_ekf_opt_controlled(u, x, params, s_init, ps_init, s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1, gamma=1, inv_monitor_len=21, order=1)
 ```
 
 Run six-state reverse-time filtering with bounded optimal NPI controls.
 
+Inputs follow si_alpha_model_ekf_opt_controlled, with six states and
+NaN controls requesting optimal bounds. Supply chronological data.
+The initial mean/covariance starts at the latest sample; the final
+boundary applies at the earliest sample. Outputs are chronological.
+
 #### `new_case_ekf_estimator_with_optimal_npi`
 
 ```python
-new_case_ekf_estimator_with_optimal_npi(u,x,params,s_init,ps_init,s_final,ps_final,w_bar,v_bar,q_w,r_v,beta=1,gamma=1,inv_monitor_len=21,order=1)
+new_case_ekf_estimator_with_optimal_npi(u, x, params, s_init, ps_init, s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1, gamma=1, inv_monitor_len=21, order=1)
 ```
 
 Port the older six-state estimator (simple covariance; switching phi >= 0).
@@ -334,7 +387,7 @@ p_smooth, k_gain, innovations, rho, as in Tools' original function.
 #### `rt_exp_fit_ekf`
 
 ```python
-rt_exp_fit_ekf(x,s_init,params,w_bar,v_bar,ps_init,q_w,r_v,beta=1,gamma=1,inv_monitor_len=21,order=1)
+rt_exp_fit_ekf(x, s_init, params, w_bar, v_bar, ps_init, q_w, r_v, beta=1, gamma=1, inv_monitor_len=21, order=1)
 ```
 
 Estimate cases and bounded growth with the original two-state EKF/EKS.
@@ -343,6 +396,11 @@ params = [time_scale, growth_memory, growth_saturation]; saturation > 0.
 Returns nine arrays in the MATLAB order: s_minus, s_plus, p_minus,
 p_plus, k_gain, s_smooth, p_smooth, innovations, rho. Missing observations
 skip correction. Both first- and second-order filters are supported.
+
+x is a length-N case series. The two states are case amplitude and
+growth; s_init has length 2 and ps_init is (2, 2). q_w and r_v are
+process and observation covariances. Noise means are w_bar and v_bar.
+All state arrays have shape (2, N); covariance arrays are (2, 2, N).
 
 ### data
 
@@ -383,6 +441,11 @@ Daily cases begin with zero, negative revisions are clipped to zero,
 and nonfinite differences become zero. This preprocessing uses only
 present and past observations and is shared by both updated languages.
 
+cumulative is a length-N vector of total case counts. window is a
+positive integer number of days (default 7). Returns two length-N
+arrays: daily counts and their trailing moving average. The average
+uses zero padding before the first sample.
+
 ### npi
 
 #### `npi_cost`
@@ -400,7 +463,7 @@ interventions and days, exactly as in the original MATLAB function.
 #### `nonnegative_least_squares`
 
 ```python
-nonnegative_least_squares(x,y,max_iter=10000,tolerance=1e-10)
+nonnegative_least_squares(x, y, max_iter=10000, tolerance=1e-10)
 ```
 
 Solve nonnegative least squares by matched cyclic coordinate descent.
@@ -409,16 +472,24 @@ Both languages use the same zero initialization, coordinate order,
 relative stopping criterion, and iteration cap. This avoids differences
 between MATLAB's lsqnonneg and SciPy solvers in the updated pipeline.
 
+x has shape (samples, coefficients); y is a length-samples vector.
+Returns a nonnegative coefficient vector. tolerance controls the relative
+change in coefficients; max_iter limits complete coordinate passes.
+
 #### `default_si_params`
 
 ```python
-default_si_params(u_max, *, epsilon=.5, weights=None)
+default_si_params(u_max, *, epsilon=0.5, weights=None)
 ```
 
 Create reproducible SI-alpha parameters used by both implementations.
 
 beta=-log(.01)/21, gamma=1/7, dt=1 day; other choices are documented
 educational assumptions from the historical implementation.
+
+u_max is a vector of upper intervention bounds. Returns a parameter
+dict with one coefficient and lower bound per intervention. weights
+defaults to ones; epsilon sets the intervention-cost weight.
 
 #### `fit_npi_model`
 
@@ -447,10 +518,15 @@ Returns (cases, states), where states is (3,N). Cases use the pre-update
 incidence N_population*s*i*alpha, avoiding a one-day shift between
 forecasted cases and the transition producing those cases.
 
+model is returned by fit_npi_model. inputs has shape (interventions, N)
+and must lie within the stored lower and upper bounds. cases is a
+length-N vector of counts; the state rows are susceptible fraction,
+infected fraction, and contact rate.
+
 #### `optimal_npi`
 
 ```python
-optimal_npi(model, horizon, weights, epsilon=.5, iterations=8)
+optimal_npi(model, horizon, weights, epsilon=0.5, iterations=8)
 ```
 
 Solve a bounded finite-horizon SI-alpha control problem by EKF/EKS shooting.
@@ -460,10 +536,15 @@ zero terminal costates; NaN controls select lower/upper bounds using
 the paper's switching function. Returns (controls, cases, states).
 This is a finite-iteration solver, not a claim of globally optimal convergence.
 
+model is the dict returned by fit_npi_model. horizon is the number of
+future days; weights has one nonnegative cost per intervention. epsilon
+is between 0 and 1. Returns controls (interventions, horizon), daily
+case counts (horizon,), and post-update states (3, horizon).
+
 #### `train_npi_prescriptor`
 
 ```python
-train_npi_prescriptor(start_date_str,end_date_str,data_file,geo_file,populations_file,included_ip,npi_maxes,trained_model_params_file, *, regression_start_date=None)
+train_npi_prescriptor(start_date_str, end_date_str, data_file, geo_file, populations_file, included_ip, npi_maxes, trained_model_params_file, *, regression_start_date=None)
 ```
 
 Train selected geographies from local Oxford data and save a JSON model bundle.
@@ -476,7 +557,7 @@ Returns the same bundle written to trained_model_params_file.
 #### `prescribe_npi`
 
 ```python
-prescribe_npi(start_date_str,end_date_str,ip_file,costs_file,output_file, *, model_file,epsilon=.5)
+prescribe_npi(start_date_str, end_date_str, ip_file, costs_file, output_file, *, model_file, epsilon=0.5)
 ```
 
 Write XPRIZE-format daily prescriptions from a trained JSON bundle.
@@ -489,9 +570,7 @@ local paths. Returns the written DataFrame. No external service is used.
 #### `train_predict_prescribe_npi`
 
 ```python
-train_predict_prescribe_npi(npi_weights,human_npi_cost_factor,start_train_date_str,end_train_date_str,
-        start_regression_date_str,end_predict_prescribe_date_str,data_file,geo_file,populations_file,
-        included_ip,npi_mins,npi_maxes,trained_model_params_file)
+train_predict_prescribe_npi(npi_weights, human_npi_cost_factor, start_train_date_str, end_train_date_str, start_regression_date_str, end_predict_prescribe_date_str, data_file, geo_file, populations_file, included_ip, npi_mins, npi_maxes, trained_model_params_file)
 ```
 
 Train and return per-geography fixed-policy and optimal-policy forecasts.
@@ -503,9 +582,7 @@ and (human,NPI) costs. All numerical work is in src, outside notebooks.
 #### `forecast_quality_assessment`
 
 ```python
-forecast_quality_assessment(npi_weights,human_npi_cost_factor,start_train_date_str,end_train_date_str,
-        start_regression_date_str,end_predict_prescribe_date_str,max_look_ahead_days,data_file,geo_file,
-        populations_file,included_ip,npi_mins,npi_maxes,trained_model_params_file)
+forecast_quality_assessment(npi_weights, human_npi_cost_factor, start_train_date_str, end_train_date_str, start_regression_date_str, end_predict_prescribe_date_str, max_look_ahead_days, data_file, geo_file, populations_file, included_ip, npi_mins, npi_maxes, trained_model_params_file)
 ```
 
 Evaluate held-out fixed-policy forecasts without fitting future observations.
@@ -527,6 +604,9 @@ Evaluate the learnable exponential activation ``exp(alpha*x)``.
 x and alpha must be broadcast-compatible; supply MATLAB Alpha weights
 explicitly. The optional torch_exp_layer factory adds automatic gradients.
 
+Returns a NumPy array with the broadcast shape of x and alpha. Large
+positive alpha*x can overflow; choose scales appropriate for the input.
+
 #### `my_tanh_layer`
 
 ```python
@@ -537,6 +617,9 @@ Evaluate ``alpha*tanh(x/alpha)`` with broadcast-compatible nonzero weights.
 
 Pass the original MATLAB Alpha array to reproduce an existing layer.
 A zero scale is rejected because the historical expression is undefined.
+
+Returns a NumPy array with the broadcast shape of x and alpha.
+Each output approaches +/-abs(alpha) as the input magnitude increases.
 
 #### `torch_exp_layer`
 
@@ -557,6 +640,10 @@ torch_my_tanh_layer(alpha)
 
 Create a trainable PyTorch scaled-tanh module with explicit nonzero weights.
 
+Requires the optional neural dependency. alpha supplies the initial
+nonzero scale weights. Returns a torch.nn.Module with float64 learnable
+weights; inputs must have compatible shape, dtype, and device.
+
 ### spatial
 
 #### `diffusion_2d`
@@ -571,17 +658,23 @@ initial is a finite (rows,columns) concentration grid. Periodic boundaries
 conserve total mass. Returns (rows,columns,steps+1), including the initial
 grid. The stability condition diffusion*dt/spacing**2 <= 1/4 is enforced.
 
+initial is a finite rows-by-columns grid. diffusion has units of
+length squared per time; dt and spacing use those time and length
+units. steps is the number of updates. The final array axis is time.
+
 #### `population_motion_2d`
 
 ```python
-population_motion_2d(positions, velocities, dt, steps, box_size=1.)
+population_motion_2d(positions, velocities, dt, steps, box_size=1.0)
 ```
 
-Move agents with reflecting square boundaries using a triangular-wave map.
+Move agents in a square with reflecting walls.
 
-positions and velocities have shape (agents,2); initial positions lie
-inside [0,box_size]. Returns positions (agents,2,steps+1). Reflection
-handles arbitrarily many wall crossings in a single step.
+positions and velocities have shape (agents, 2). Initial positions
+lie in [0, box_size] along both axes. dt is the time step; steps is
+the number of updates. box_size is the square side length (default 1).
+Returns positions with shape (agents, 2, steps+1), including the
+initial positions. Reflection handles multiple wall crossings per step.
 
 ### codegen
 
@@ -599,7 +692,7 @@ Clip s[0:2] to [0,1] and contact rate to its configured bounds.
 obs_hard_margins(x, params)
 ```
 
-Leave predicted observations unchanged (original Coder convention).
+Leave observations unchanged, as in the original standalone Coder helper.
 
 #### `nlin_state_update`
 
@@ -615,7 +708,7 @@ Return optimal control and the next six-state SI-alpha/costate vector.
 nlin_obs_update(u, s, v_bar, params)
 ```
 
-Evaluate incidence plus v_bar; the standalone Coder model observes NEWCASES only.
+Evaluate incidence plus v_bar; the original Coder model observes NEWCASES only.
 
 #### `state_jacobians`
 
@@ -631,7 +724,7 @@ Return analytic state and process-noise Jacobians (6x6 each).
 obs_jacobian(u, s, v_bar, params)
 ```
 
-Return observation and noise Jacobians (1x6 and 1x1).
+Return incidence and noise Jacobians (1x6 and 1x1), as in the Coder model.
 
 #### `state_hessian_terms`
 
@@ -652,13 +745,15 @@ Return the four original zero-valued observation correction arrays.
 #### `new_case_ekf_estimator_with_optimal_npi`
 
 ```python
-new_case_ekf_estimator_with_optimal_npi(*args, **kwargs)
+new_case_ekf_estimator_with_optimal_npi(u, x, params, s_init, ps_init, s_final, ps_final, w_bar, v_bar, q_w, r_v, beta=1, gamma=1, inv_monitor_len=21, order=1)
 ```
 
-Return the dedicated estimator in MATLAB Coder's alternate output order.
+Run the standalone Coder six-state estimator in its alternate output order.
 
-Same arguments as the public dedicated estimator. Coder orders filtered
-covariances and gain before smoothed mean/covariance; see docs/api.md.
+The original Coder model observes NEWCASES only and leaves predicted
+observations unclipped. Returns u_opt, s_minus, s_plus, p_minus, p_plus,
+k_gain, s_smooth, p_smooth, innovations, rho. Other argument contracts
+match the dedicated estimator in kalman.py.
 
 ### Geographic-table convenience reader
 

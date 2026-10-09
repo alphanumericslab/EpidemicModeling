@@ -66,3 +66,14 @@ learnable layer forward passes are tested. MATLAB Coder compilation and the
 historical LSTM training scripts are not claimed as validated. Upgraded
 orchestration replaces historical plotting/configuration branches as explained
 in `migration.md`.
+
+## Documentation and layout review
+
+Function help states inputs, outputs, shapes, units, and numerical conventions
+where needed. Python statements use standard formatting. MATLAB statements
+occupy separate lines, with continuation lines for long expressions. Blank
+lines separate validation, initialization, updates, and return values.
+
+Executable Python syntax trees match the preceding release after docstrings
+are removed. All 35 Python tests, 18 MATLAB tests, seven notebooks, six MATLAB
+examples, and 124 MATLAB/Python array comparisons passed after the layout changes.

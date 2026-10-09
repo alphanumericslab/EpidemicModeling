@@ -8,16 +8,20 @@ classdef exp_layer < nnet.layer.Layer
     properties (Learnable)
         Alpha
     end
+
     methods
+
         function layer = exp_layer(num_channels, name)
             % EXP_LAYER Construct the activation with learnable channel scales.
             layer.Name = name;
             layer.Description = "Exponential activation with " + num_channels + " channels";
             layer.Alpha = randn([1 1 num_channels]);
         end
+
         function z = predict(layer, x)
             % PREDICT Evaluate the elementwise exponential forward pass.
             z = exp(layer.Alpha .* x);
         end
+
     end
 end
