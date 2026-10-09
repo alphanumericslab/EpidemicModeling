@@ -87,10 +87,9 @@ versions, tolerances, and optional-feature coverage.
 ## Review and extend
 
 - [API contracts and parameter glossary](docs/api.md)
-- [Migration map and deliberate fixes](docs/migration.md)
 - [Examples guide](docs/examples_guide.md)
-- [Validation evidence](docs/validation.md)
-- [Historical data provenance](data/README.md)
+- [Validation](docs/validation.md)
+- [Historical data source](data/README.md)
 - [Bibliography](references.bib) and [technical report](docs/xprize_detailed_technical_report.pdf)
 
 Re-execute/export notebooks with `python scripts/execute_notebooks.py`.
@@ -107,7 +106,7 @@ No push, commit, or remote repository modification is required.
    Processing, 16(2), 307–317. [doi:10.1109/JSTSP.2021.3129118](https://doi.org/10.1109/JSTSP.2021.3129118).
 
 Please cite both papers and the [original repository](https://github.com/alphanumericslab/EpidemicModeling)
-when using this work. Existing images retain their original provenance. Source
+when using this work. Existing images retain their original source. Source
 copyright/licensing notices are preserved; see [licensing notes](LICENSE.md).
 
 ## Previous simulation recordings
@@ -116,5 +115,5 @@ The [spatial-model notebook](notebooks/06_spatial_models_and_layers.ipynb) inclu
 inline playback of both previous-run recordings in `figures/`: the M4V file and
 the H.264 MP4 converted from the larger AVI. The MP4 preserves the original
 1120-by-840 resolution, 10 fps frame rate, and 200.6-second duration, while
-reducing file size from 125.5 MB to 16.1 MB. Provenance and hashes are recorded
+reducing file size from 125.5 MB to 16.1 MB. Source and hashes are recorded
 in `reports/previous_run_videos.json`.
