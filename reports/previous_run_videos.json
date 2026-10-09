@@ -1,0 +1,28 @@
+[
+  {
+    "file": "figures/socializing_population_previous_run.mp4",
+    "sha256": "2a63d5b178de1ac4f0838101305e42f7770b3bd604d2b72ce97fb64d0572b9e7",
+    "bytes": 16086025,
+    "source": "Previous simulation run; supplied in repository root.",
+    "original_file": "figures/socializing_population_previous_run.avi",
+    "original_sha256": "a1154ac78d9cbd443bdf22ba49732cfd81e7574fd019cc20ee13798bf0f47dd4",
+    "original_bytes": 125545584,
+    "conversion": {
+      "container": "MP4",
+      "codec": "H.264",
+      "crf": 26,
+      "resolution": [
+        1120,
+        840
+      ],
+      "fps": 10,
+      "duration_seconds": 200.6
+    }
+  },
+  {
+    "file": "figures/socializing_population_previous_run.m4v",
+    "sha256": "7c170aa2fc010c4592bf8580d1e8553f3f61f466661e0df1f10f53e17f8c7b3a",
+    "bytes": 12208444,
+    "source": "Previous simulation run; supplied in repository root."
+  }
+]

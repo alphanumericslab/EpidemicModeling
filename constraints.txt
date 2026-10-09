@@ -1,0 +1,12 @@
+# Versions verified on Python 3.12 / macOS arm64.
+# Optional reproducibility constraint: pip install -c constraints.txt -e ".[notebooks,dev]"
+numpy==2.5.3
+scipy==1.18.1
+pandas==3.0.6
+matplotlib==3.11.2
+pytest==9.1.1
+nbformat==5.11.1
+nbclient==0.11.0
+nbconvert==7.17.1
+jupyterlab==4.6.4
+ipykernel==7.4.0

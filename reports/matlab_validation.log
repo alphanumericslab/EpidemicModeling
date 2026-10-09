@@ -1,0 +1,43 @@
+[Warning: Function newline has the same name as a MATLAB built-in. We suggest
+you rename the function to avoid a potential name conflict.] 
+[Warning: Function newline has the same name as a MATLAB built-in. We suggest
+you rename the function to avoid a potential name conflict.] 
+Running test_compartment_models
+.....
+Done test_compartment_models
+__________
+
+Running test_data_workflows
+..
+Done test_data_workflows
+__________
+
+Running test_growth_estimators
+...
+Done test_growth_estimators
+__________
+
+Running test_kalman_filters
+...
+Done test_kalman_filters
+__________
+
+Running test_npi_spatial_layers
+.....
+Done test_npi_spatial_layers
+__________
+
+  1x18 TestResult array with properties:
+
+    Name
+    Passed
+    Failed
+    Incomplete
+    Duration
+    Details
+
+Totals:
+   18 Passed, 0 Failed, 0 Incomplete.
+   3.2165 seconds testing time.
+
+Saved 124 MATLAB arrays to /Users/rsameni/Documents/ChatGPT/epidemic-disease-modeling/update/reports/matlab_results.mat
